@@ -2,4 +2,4 @@
 Bayesian NonParametric Walk Analysis and Latent-state Kinetics
 
 
-[Read the Manual](./manual.pdf)
+[Read the Manual](./BNP-WALK_manual.pdf)
