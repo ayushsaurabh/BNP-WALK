@@ -1,8 +1,8 @@
 const working_directory = string(pwd(), "/")
 const random_number_generator_seed = 123
 
-const file_id = string("processed_trajectory_invivo")
-const data_range = 1:920000 #Use Colon() to choose full data range
+const file_id = string("processed_trajectory_dynein")
+const data_range = Colon() #Use Colon() to choose full data range or a:b for range from a to b
 
 # Availability of Ground Truth
 const ground_truth_available = false
@@ -13,8 +13,8 @@ const T = 300 # K
 const dt = 5.0e-7 # s
 
 # Output Parameters
-const output_frequency::Int64 = 1000
-const plotting_on::Bool = false
+const output_frequency::Int64 = 100
+const plotting_on::Bool = true
 const plotting_frequency::Int64 = output_frequency
 const save_plots::Bool = false
 const data_plotting_linewidth = 1.0
