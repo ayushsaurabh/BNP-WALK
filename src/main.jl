@@ -357,7 +357,7 @@ function sampler()
 					end
 				end
 			end
-		end
+			end
 		end
 
 		if draw <= window_size
@@ -459,7 +459,7 @@ function sampler()
 		end
 
  		# Save Data 
-      		if draw % save_frequency == 0
+      	if draw % save_frequency == 0
  
  			current_sample += 1
  
@@ -474,7 +474,7 @@ function sampler()
 			mcmc_dwell_gamma_mean[current_sample] = dwell_gamma_mean 
 			mcmc_dwell_gamma_shape[current_sample] = dwell_gamma_shape 
  
-      			save_mcmc_data(draw, 
+      		save_mcmc_data(draw, 
         			current_sample, 
 				mcmc_loads,
 				mcmc_change_points_time,
@@ -493,6 +493,7 @@ function sampler()
 			println("")
 			flush(stdout);
 
+			# Reinitialize everything to avoid correlations among samples
 			diffusion_coeff, dwell_gamma_shape, dwell_gamma_mean,
 				n_change_points = initialize_parameters!(position_x, 
 					position_y, 
@@ -524,7 +525,7 @@ function sampler()
 		
 			end
 
-    		end
+    	end
 
 	end
 
