@@ -275,7 +275,7 @@ end
 
 
 function prepare_OU!(dwell, 
-    	diffusion_coeff,
+    diffusion_coeff,
 	dynamics_matrix,
 	stiffness_matrix,
 	inv_stiffness_matrix,
@@ -345,39 +345,39 @@ function get_log_likelihood!(dwell,
 
 	log_norm_const = -0.5 * log((2.0 * π)^2 * det_OU_covariance[dwell])
 
-    	log_likelihood = 0.0
+    log_likelihood = 0.0
 
-    	for i in time_range
+    for i in time_range
 
-   	    	increment_x::Float64 =
+   	    increment_x::Float64 =
    	    	    detected_position_x[i] - reference_position_x
 
-   	    	increment_y::Float64 =
+   	    increment_y::Float64 =
    	    	    detected_position_y[i] - reference_position_y
 
-   	    	trap_extension_x::Float64 =
+   	    trap_extension_x::Float64 =
    	    	    detected_position_x[i-1] - reference_position_x
 
-   	    	trap_extension_y::Float64 =
+   	    trap_extension_y::Float64 =
    	    	    detected_position_y[i-1] - reference_position_y
 
-   	    	residual_x =
+   	    residual_x =
    	    	    increment_x -
    	    	    (dynamics_matrix[dwell, 1,1] * trap_extension_x +
    	    	     dynamics_matrix[dwell, 1,2] * trap_extension_y)
 
-   	    	residual_y =
+   	    residual_y =
    	    	    increment_y -
    	    	    (dynamics_matrix[dwell, 2,1] * trap_extension_x +
    	    	     dynamics_matrix[dwell, 2,2] * trap_extension_y)
 
-   	    	quad_form =
+   	    quad_form =
    	    	    inv_OU_covariance[dwell, 1,1] * residual_x^2 +
    	    	    2.0 * inv_OU_covariance[dwell, 1,2] * residual_x * residual_y +
    	    	    inv_OU_covariance[dwell, 2,2] * residual_y^2
 
-   	    	log_likelihood += log_norm_const - 0.5 * quad_form
-    	end
+   	    log_likelihood += log_norm_const - 0.5 * quad_form
+    end
 
-    	return log_likelihood
+    return log_likelihood
 end
