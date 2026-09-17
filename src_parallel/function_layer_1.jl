@@ -818,13 +818,13 @@ function sample_stiffness!(draw,
 
 		log_forward_transition_probability::Float64 = 
 				logpdf_Gamma(stiffness_gamma_proposal_alpha, 
-					old_k_xx/stiffness_gamma_proposal_alpha, proposed_k_xx)
+					old_k_xx/stiffness_gamma_proposal_alpha, proposed_k_xx) +
 				logpdf_Gamma(stiffness_gamma_proposal_alpha, 
 					old_k_yy/stiffness_gamma_proposal_alpha, proposed_k_yy)
 
 		log_backward_transition_probability::Float64 = 
 				logpdf_Gamma(stiffness_gamma_proposal_alpha, 
-					proposed_k_xx/stiffness_gamma_proposal_alpha, old_k_xx)
+					proposed_k_xx/stiffness_gamma_proposal_alpha, old_k_xx) +
 				logpdf_Gamma(stiffness_gamma_proposal_alpha, 
 					proposed_k_yy/stiffness_gamma_proposal_alpha, old_k_yy)
 
@@ -926,13 +926,13 @@ function sample_stiffness!(draw,
 
 			log_forward_transition_probability::Float64 = 
 					logpdf_Gamma(stiffness_gamma_proposal_alpha, 
-						old_k_xx/stiffness_gamma_proposal_alpha, proposed_k_xx)
+						old_k_xx/stiffness_gamma_proposal_alpha, proposed_k_xx) +
 					logpdf_Gamma(stiffness_gamma_proposal_alpha, 
 						old_k_yy/stiffness_gamma_proposal_alpha, proposed_k_yy)
 
 			log_backward_transition_probability::Float64 = 
 					logpdf_Gamma(stiffness_gamma_proposal_alpha, 
-						proposed_k_xx/stiffness_gamma_proposal_alpha, old_k_xx)
+						proposed_k_xx/stiffness_gamma_proposal_alpha, old_k_xx) + 
 					logpdf_Gamma(stiffness_gamma_proposal_alpha, 
 						proposed_k_yy/stiffness_gamma_proposal_alpha, old_k_yy)
 
