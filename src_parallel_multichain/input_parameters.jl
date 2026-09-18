@@ -1,8 +1,8 @@
 const working_directory = string(pwd(), "/")
 const random_number_generator_seed = myid() - 1
 
-const file_id = string("processed_trajectory_dynein")
-const data_range = 1:920000#Colon() #Use Colon() to choose full data range or a:b for range from a to b
+const file_id = string("/oak/stanford/groups/schu/PlasmonicMicroscope/Projects/iN/Analysis/Step_Finding/Segments_1/trajectory_segment_0.h5")
+const data_range = Colon() #Use Colon() to choose full data range or a:b for range from a to b
 
 # Availability of Ground Truth
 const ground_truth_available = false
@@ -22,19 +22,19 @@ const data_plotting_linewidth = 1.0
 const data_plotting_opacity = 0.4
 const data_plotting_sampling_frequency = 100
 
-const n_MCMC_chains::Int64 = 4 
+const n_MCMC_chains::Int64 = 25 
 const n_samples_to_save::Int64 = 100 # Always choose multiples of n_MCMC_chains
 const n_samples_to_save_per_chain::Int64 = n_samples_to_save/n_MCMC_chains
 
 ##### Inference Parameters #####
 
 # Parameters to bound jump size for numerical stability 
-const minimum_allowed_jump_size = 5.0e-9 # m
+const minimum_allowed_jump_size = 2.0e-9 # m
 const maximum_allowed_jump_size = 50.0e-9 # m
 
 # Prior Parameters
 const typical_dwell_gamma_shape = 2.0 # s
-const typical_dwell_time = 3500*10*dt # s
+const typical_dwell_time = 20e-3 # s
 const dwell_gamma_shape_uniform_prior_min = 1.0
 const dwell_gamma_shape_uniform_prior_max = 5.0
 const dwell_gamma_mean_prior_shape = 1.0
