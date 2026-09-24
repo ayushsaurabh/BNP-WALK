@@ -4,7 +4,7 @@ using Distributions
 using Statistics
 
 include("input_parameters.jl")
-current_directory =  "/home/mbgnjasb/codes/chu_lab/inverse_code/no_straight_line_assumption_add_anisotropy_nonparametrics_FBM/experimental_data/dynein/testing_2/"
+current_directory =  "/home/analysis/code/BNP-WALK/src_parallel_multichain/"
 
 fname = string(current_directory, file_id, ".h5")
 fid = h5open(fname, "r")
@@ -119,7 +119,7 @@ begin
 	linewidth_data_plot = 0.1
 	n_bins_change_point_hist = 100 
 
-	n_bins_dwell_time_hist = 200
+	n_bins_dwell_time_hist = 1000
 	upper_lim_dwell_time_hist = 0.05#(n_time_points -1) * dt
 	text_location_x, text_location_y = 0.025, 120
 

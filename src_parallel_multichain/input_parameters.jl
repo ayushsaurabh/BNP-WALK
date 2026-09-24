@@ -1,7 +1,7 @@
 const working_directory = string(pwd(), "/")
-const random_number_generator_seed = myid() - 1
+#const random_number_generator_seed = myid() - 1
 
-const file_id = string("/oak/stanford/groups/schu/PlasmonicMicroscope/Projects/iN/Analysis/Step_Finding/Segments_1/trajectory_segment_0.h5")
+const file_id = string("trajectory_segment_0")
 const data_range = Colon() #Use Colon() to choose full data range or a:b for range from a to b
 
 # Availability of Ground Truth
