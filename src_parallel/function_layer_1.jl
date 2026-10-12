@@ -1,9 +1,9 @@
 function get_data()
 
-	fname = string(working_directory, file_id, ".h5")
-	fid = h5open(fname, "r")
-	detected_position_x = read(fid, "x(m)")
-	detected_position_y = read(fid, "y(m)")
+	fid = h5open(input_file, "r")
+	xy = fid["analysis/xy"]
+	detected_position_x = xy[1, 1, :]
+	detected_position_y = xy[1, 2, :]
 	close(fid)
 
 	detected_position_x .= (detected_position_x .- detected_position_x[1])
@@ -998,9 +998,7 @@ function save_mcmc_data(current_draw::Int64,
 	)
 
 	# Save the data in HDF5 format.
-	file_name = string(working_directory, "mcmc_output_", file_id, ".h5")
-
-	h5open(file_name,"w") do fid
+	h5open(output_file,"w") do fid
 
 	write_dataset(fid, "mcmc_loads",
 			view(mcmc_loads, 1:current_sample, :))

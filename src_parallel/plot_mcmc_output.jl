@@ -8,8 +8,9 @@ current_directory =  "/home/mbgnjasb/codes/chu_lab/inverse_code/no_straight_line
 
 fname = string(current_directory, file_id, ".h5")
 fid = h5open(fname, "r")
-det_position_x = read(fid, "x(m)")
-det_position_y = read(fid, "y(m)")
+xy = fid["analysis/xy"]
+det_position_x = xy[1, 1, :]
+det_position_y = xy[1, 2, :]
 close(fid)
 
 detected_position_x = (det_position_x .- det_position_x[1])[data_range]

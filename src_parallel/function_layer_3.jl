@@ -1,9 +1,9 @@
 function get_data()
 
-	fname = string(working_directory, file_id, ".h5")
-	fid = h5open(fname, "r")
-	detected_position_x = read(fid, "x(m)")
-	detected_position_y = read(fid, "y(m)")
+	fid = h5open(input_file, "r")
+	xy = fid["analysis/xy"]
+	detected_position_x = xy[1, 1, :]
+	detected_position_y = xy[1, 2, :]
 	close(fid)
 
 	detected_position_x .= (detected_position_x .- detected_position_x[1])
@@ -130,10 +130,9 @@ if plotting_on == true
 				rightmargin=10mm)
 		display(final_plot)
 		if save_plots == true && current_draw % save_frequency == 0
-			savefig(final_plot, string(working_directory, file_id, "_", current_draw, ".png"))
+			savefig(final_plot, joinpath(working_directory, string(file_id, "_", current_draw, ".png")))
 		end
 
 		return nothing
 	end
 end
-

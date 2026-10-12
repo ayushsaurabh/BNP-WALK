@@ -1,25 +1,71 @@
 using Distributed
-addprocs(4)
+using Random, Distributions, SpecialFunctions, Statistics, LinearAlgebra
+using HDF5
+using TOML
 
-@everywhere begin
+length(ARGS) == 1 || error("Usage: julia main.jl CONFIG.toml")
 
+const source_directory = @__DIR__
+include(joinpath(source_directory, "runtime_configuration.jl"))
+
+const run_configuration = load_sampler_configuration(ARGS[1])
+const worker_pids = addprocs(length(run_configuration.input_files); dir=source_directory)
+const trace_worker_pid = worker_pids[run_configuration.trace_to_plot]
+const selected_input_file = run_configuration.input_files[run_configuration.trace_to_plot]
+const selected_output_file = output_path(run_configuration, selected_input_file)
+
+install_runtime_parameters!(
+	run_configuration,
+	selected_input_file,
+	selected_output_file,
+	run_configuration.base_random_seed,
+)
+const rng = Xoshiro(random_number_generator_seed)
+
+@everywhere worker_pids begin
 	using Random, Distributions, SpecialFunctions, Statistics, LinearAlgebra
 	using HDF5
-	include("input_parameters.jl")
-	rng = Xoshiro(random_number_generator_seed);
-	include("function_layer_1.jl")
-	include("function_layer_2.jl")
-
+	using TOML
+	include($(joinpath(source_directory, "runtime_configuration.jl")))
 end
-include("function_layer_3.jl")
-const file_id = string("processed_trajectory_dynein_", trace_to_plot)
+
+for (input_index, (pid, worker_input_file)) in
+		enumerate(zip(worker_pids, run_configuration.input_files))
+	worker_output_file = output_path(run_configuration, worker_input_file)
+	worker_seed = run_configuration.base_random_seed + input_index
+	remotecall_wait(
+		install_runtime_parameters!,
+		pid,
+		run_configuration,
+		worker_input_file,
+		worker_output_file,
+		worker_seed,
+	)
+end
+
+@everywhere worker_pids begin
+	rng = Xoshiro(random_number_generator_seed)
+	include($(joinpath(source_directory, "function_layer_1.jl")))
+	include($(joinpath(source_directory, "function_layer_2.jl")))
+end
+
+include(joinpath(source_directory, "function_layer_3.jl"))
 const detected_position_x, detected_position_y = get_data();
 const n_time_points = size(detected_position_x)[1]
 
-@everywhere workers() begin
+if ground_truth_available
+	h5open(input_file, "r") do fid
+		global gt_position_x = read(fid, "gt_x(m)")
+		global gt_position_y = read(fid, "gt_y(m)")
+		global gt_change_points_time = read(fid, "gt_change_points_time(s)")
+		global gt_dwell_time = read(fid, "gt_dwell_time(s)")
+		global gt_jump_size = read(fid, "gt_jump_size(m)")
+	end
+end
+
+@everywhere worker_pids begin
 	if ground_truth_available
-		fname = string(working_directory, file_id, ".h5")
-		fid = h5open(fname, "r")
+		fid = h5open(input_file, "r")
 		gt_position_x = read(fid, "gt_x(m)")
 		gt_position_y = read(fid, "gt_y(m)")
 		gt_change_points_time = read(fid, "gt_change_points_time(s)")
@@ -68,7 +114,7 @@ function sampler()
 	dwell_gamma_mean = typical_dwell_time
 
 
-	@everywhere workers() begin
+	@everywhere worker_pids begin
 
 		diffusion_coeff = $diffusion_coeff
 		dwell_gamma_shape = $dwell_gamma_shape
@@ -188,16 +234,16 @@ function sampler()
 	accepted_loads = 0
 
 	current_sample::Int64 = 0
-	println("Loads on trace ", trace_to_plot, " = ",  @fetchfrom trace_to_plot+1 loads)
-	println("Loads active on trace ", trace_to_plot," = ",  @fetchfrom trace_to_plot+1 loads_active)
+	println("Loads on trace ", trace_to_plot, " = ",  @fetchfrom trace_worker_pid loads)
+	println("Loads active on trace ", trace_to_plot," = ",  @fetchfrom trace_worker_pid loads_active)
 
-	plot_position_x = Float64.(@fetchfrom trace_to_plot+1 position_x)
-	plot_position_y = Float64.(@fetchfrom trace_to_plot+1 position_y)
-	plot_change_points_time = Float64.(@fetchfrom trace_to_plot+1 change_points_time)
-	plot_loads_active = Int64.(@fetchfrom trace_to_plot+1 loads_active)
-	plot_n_change_points = Int64(@fetchfrom trace_to_plot+1 n_change_points)
-	plot_mcmc_log_posterior = Float64.(@fetchfrom trace_to_plot+1 mcmc_log_posterior)
-	plot_mcmc_dwell_gamma_shape = Float64.(@fetchfrom trace_to_plot+1 mcmc_dwell_gamma_shape)
+	plot_position_x = Float64.(@fetchfrom trace_worker_pid position_x)
+	plot_position_y = Float64.(@fetchfrom trace_worker_pid position_y)
+	plot_change_points_time = Float64.(@fetchfrom trace_worker_pid change_points_time)
+	plot_loads_active = Int64.(@fetchfrom trace_worker_pid loads_active)
+	plot_n_change_points = Int64(@fetchfrom trace_worker_pid n_change_points)
+	plot_mcmc_log_posterior = Float64.(@fetchfrom trace_worker_pid mcmc_log_posterior)
+	plot_mcmc_dwell_gamma_shape = Float64.(@fetchfrom trace_worker_pid mcmc_dwell_gamma_shape)
 
 	plot_gamma_shape[draw] = dwell_gamma_shape
 	plot_diffusion_coeff[draw] = diffusion_coeff
@@ -230,14 +276,14 @@ function sampler()
 			exp(-((draw - 1) % save_burn_in_period)/
 			    	annealing_constant)
 
-		@everywhere workers() draw = $draw
-		@everywhere workers() annealing_temperature = $annealing_temperature
+		@everywhere worker_pids draw = $draw
+		@everywhere worker_pids annealing_temperature = $annealing_temperature
 
 		log_diffusion_coeff = log(diffusion_coeff)
 		log_proposed_diffusion_coeff = rand(rng, Normal(log_diffusion_coeff, step_size_diffusion_coeff_sampler))
 		proposed_diffusion_coeff = exp(log_proposed_diffusion_coeff)
 
-		@everywhere workers() begin
+		@everywhere worker_pids begin
 
 			proposed_diffusion_coeff = $proposed_diffusion_coeff
 			old_log_likelihood, proposed_log_likelihood = get_likelihood_diffusion_coeff(draw, 
@@ -269,7 +315,7 @@ function sampler()
 		old_log_likelihood_master = 0.0
 		proposed_log_likelihood_master = 0.0
 		
-		for worker in workers() 
+		for worker in worker_pids
 			old_log_likelihood_master += @fetchfrom worker old_log_likelihood
 			proposed_log_likelihood_master += @fetchfrom worker proposed_log_likelihood
 		end
@@ -288,13 +334,13 @@ function sampler()
 		if log_hastings >= log(rand(rng))
 			accepted_diffusion_coeff = 1
 			diffusion_coeff = proposed_diffusion_coeff
-			@everywhere workers() diffusion_coeff = $diffusion_coeff
+			@everywhere worker_pids diffusion_coeff = $diffusion_coeff
 		else
 			accepted_diffusion_coeff = 0
 		end
 		plot_diffusion_coeff[draw] = diffusion_coeff
 
-		@everywhere workers() begin
+		@everywhere worker_pids begin
 
 			for dwell in 1:n_change_points-1
 	
@@ -315,7 +361,7 @@ function sampler()
 		proposed_dwell_gamma_shape = rand(rng, collect(dwell_gamma_shape_uniform_prior_min:dwell_gamma_shape_uniform_prior_max))
 		proposed_dwell_gamma_mean = exp(rand(rng, Normal(log(dwell_gamma_mean), step_size_dwell_gamma)))
 	
-		@everywhere workers() begin
+		@everywhere worker_pids begin
 			proposed_dwell_gamma_shape = $proposed_dwell_gamma_shape
 			proposed_dwell_gamma_mean = $proposed_dwell_gamma_mean
 			old_log_likelihood, proposed_log_likelihood = get_likelihood_dwell_gamma(draw, 
@@ -336,7 +382,7 @@ function sampler()
 		old_log_likelihood_master = 0.0
 		proposed_log_likelihood_master = 0.0
 		
-		for worker in workers() 
+		for worker in worker_pids
 			old_log_likelihood_master += @fetchfrom worker old_log_likelihood
 			proposed_log_likelihood_master += @fetchfrom worker proposed_log_likelihood
 		end
@@ -354,7 +400,7 @@ function sampler()
 			accepted_gamma = 1
 			dwell_gamma_shape = proposed_dwell_gamma_shape
 			dwell_gamma_mean = proposed_dwell_gamma_mean
-			@everywhere workers() begin
+			@everywhere worker_pids begin
 				dwell_gamma_shape = $dwell_gamma_shape
 				dwell_gamma_mean = $dwell_gamma_mean
 			end
@@ -363,7 +409,7 @@ function sampler()
 		end
 		plot_gamma_shape[draw] = dwell_gamma_shape
 
-		@everywhere workers() begin 
+		@everywhere worker_pids begin
 			accepted_positions = sample_positions!(draw, 
 							position_x, 
 							position_y, 
@@ -567,16 +613,16 @@ function sampler()
 			println("**************************************************************************************************************************************************")
 			println("")
 
-			println("Loads on trace ", trace_to_plot, " = ",  @fetchfrom trace_to_plot+1 loads)
-			println("Loads active on trace ", trace_to_plot," = ",  @fetchfrom trace_to_plot+1 loads_active)
+			println("Loads on trace ", trace_to_plot, " = ",  @fetchfrom trace_worker_pid loads)
+			println("Loads active on trace ", trace_to_plot," = ",  @fetchfrom trace_worker_pid loads_active)
 
-			plot_position_x .= Float64.(@fetchfrom trace_to_plot+1 position_x)
-			plot_position_y .= Float64.(@fetchfrom trace_to_plot+1 position_y)
-			plot_change_points_time .= Float64.(@fetchfrom trace_to_plot+1 change_points_time)
-			plot_loads_active .= Int64.(@fetchfrom trace_to_plot+1 loads_active)
-			plot_n_change_points = Int64(@fetchfrom trace_to_plot+1 n_change_points)
-			plot_mcmc_log_posterior .= Float64.(@fetchfrom trace_to_plot+1 mcmc_log_posterior)
-			plot_mcmc_dwell_gamma_shape .= Float64.(@fetchfrom trace_to_plot+1 mcmc_dwell_gamma_shape)
+			plot_position_x .= Float64.(@fetchfrom trace_worker_pid position_x)
+			plot_position_y .= Float64.(@fetchfrom trace_worker_pid position_y)
+			plot_change_points_time .= Float64.(@fetchfrom trace_worker_pid change_points_time)
+			plot_loads_active .= Int64.(@fetchfrom trace_worker_pid loads_active)
+			plot_n_change_points = Int64(@fetchfrom trace_worker_pid n_change_points)
+			plot_mcmc_log_posterior .= Float64.(@fetchfrom trace_worker_pid mcmc_log_posterior)
+			plot_mcmc_dwell_gamma_shape .= Float64.(@fetchfrom trace_worker_pid mcmc_dwell_gamma_shape)
 
 	
 			if plotting_on == true
@@ -600,7 +646,7 @@ function sampler()
 		if draw % save_frequency == 0
 
 			current_sample += 1
-			@everywhere workers() begin
+			@everywhere worker_pids begin
  
 				current_sample = $current_sample
   				mcmc_loads[current_sample, 1:max_n_change_points] .= loads[:]
@@ -674,5 +720,8 @@ function sampler()
 	return nothing
 end
 
-sampler()
-rmprocs()
+try
+	sampler()
+finally
+	rmprocs(worker_pids)
+end
