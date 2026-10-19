@@ -1,8 +1,13 @@
 const working_directory = string(pwd(), "/")
 const random_number_generator_seed = myid() - 1
 
+#const file_id = string("simulated_data_dwellwise_fbm_alpha_0.6_realistic")
 const file_id = string("processed_trajectory_dynein")
-const data_range = 1:920000#Colon() #Use Colon() to choose full data range or a:b for range from a to b
+
+const data_range = 1:400000 #Use Colon() to choose full data range or a:b for range from a to b
+#const data_range = 1:920000 #Use Colon() to choose full data range or a:b for range from a to b
+#const data_range = 8000000:17000000 #Use Colon() to choose full data range or a:b for range from a to b
+#const data_range = Colon() #Use Colon() to choose full data range or a:b for range from a to b
 
 # Availability of Ground Truth
 const ground_truth_available = false
@@ -10,31 +15,31 @@ const ground_truth_available = false
 # Known Constants
 const kb = 1.38e-23 # (Kg*m^2/s^2)/K
 const T = 300 # K
-const dt = 5.0e-7 # s
+const dt = 5.0e-7 #1.0e-7## s
 
 # Output Parameters
 const chain_to_plot = 1
 const output_frequency::Int64 = 100
 const plotting_on::Bool = true
 const plotting_frequency::Int64 = output_frequency
-const save_plots::Bool = false
+const save_plots::Bool = true
 const data_plotting_linewidth = 1.0
 const data_plotting_opacity = 0.4
 const data_plotting_sampling_frequency = 100
 
-const n_MCMC_chains::Int64 = 4 
-const n_samples_to_save::Int64 = 100 # Always choose multiples of n_MCMC_chains
+const n_MCMC_chains::Int64 = 10
+const n_samples_to_save::Int64 = 200 # Always choose multiples of n_MCMC_chains
 const n_samples_to_save_per_chain::Int64 = n_samples_to_save/n_MCMC_chains
 
 ##### Inference Parameters #####
 
 # Parameters to bound jump size for numerical stability 
-const minimum_allowed_jump_size = 5.0e-9 # m
+const minimum_allowed_jump_size = 3.0e-9 # m
 const maximum_allowed_jump_size = 50.0e-9 # m
 
 # Prior Parameters
 const typical_dwell_gamma_shape = 2.0 # s
-const typical_dwell_time = 3500*10*dt # s
+const typical_dwell_time = 3500*10*dt #100.0e-3## s
 const dwell_gamma_shape_uniform_prior_min = 1.0
 const dwell_gamma_shape_uniform_prior_max = 5.0
 const dwell_gamma_mean_prior_shape = 1.0
@@ -42,16 +47,18 @@ const dwell_gamma_mean_prior_scale = typical_dwell_time #s
 
 const typical_jump_size = 8.0e-9 # m
 const std_jump_size_prior = 8.0e-9 #m
+const std_position_prior = 2.0e-9 #m
+
 
 const typical_k_value = 7.5e-5 # N/m
-const k_gamma_prior_shape = 1.0
+const k_gamma_prior_shape = 2.0
 
 const typical_diffusion_coeff = 1.0e-13 # m^2/s
 const std_diffusion_coeff_prior = 100.0 * typical_diffusion_coeff #m^2/s
 
 # Nonparametrics
 const modeling_choice = "nonparametric"
-const expected_n_dwells::Int64 = 10
+const expected_n_dwells::Int64 = 1
 
 if modeling_choice == "nonparametric"
 	const dwell_collapse_required = true
@@ -83,19 +90,19 @@ const stiffness_xy_proposal_alpha = 5.0e2 # Larger value, smaller step size
 # Convegence is typically evident when the posterior
 # probabilities fluctuate about a fixed value (ideally maximum).
 
-const starting_temperature::Float64 = 20000.0 # For nonparametric
+const starting_temperature::Float64 = 5000.0#20000.0 # For nonparametric
 const annealing_constant::Float64 = 1000.0
 
 if dwell_collapse_required == true
-	const burn_in_period::Int64 = 11.0*annealing_constant
+	const burn_in_period::Int64 = 14.0*annealing_constant
 	const collapsed_burn_in_period::Int64 = 
-			12.0*annealing_constant - burn_in_period
+			15.0*annealing_constant - burn_in_period
 	const save_burn_in_period::Int64 = 
 			burn_in_period+collapsed_burn_in_period
 	const annealing_constant_after_collapse::Float64 = 
 		annealing_constant*((save_burn_in_period-burn_in_period)/burn_in_period)
 else
-	const burn_in_period::Int64 = 12.0*annealing_constant
+	const burn_in_period::Int64 = 15.0*annealing_constant
 	const save_burn_in_period::Int64 = burn_in_period
 end
 const save_frequency::Int64 = save_burn_in_period 

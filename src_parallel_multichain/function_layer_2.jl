@@ -316,6 +316,42 @@ end
 #end
 
 
+function get_log_stiffness_prior(kxx, kyy, kxy)
+
+    stiffness_determinant = kxx*kyy - kxy^2
+
+    # Positive stiffness in both principal directions.
+    if kxx <= 0 || kyy <= 0 || stiffness_determinant <= 0
+        return -Inf
+    end
+
+    stiffer_principal_stiffness =
+        (kxx + kyy + hypot(kxx - kyy, 2*kxy))/2
+
+    softer_principal_stiffness =
+        stiffness_determinant/stiffer_principal_stiffness
+
+    log_prior =
+        logpdf(
+            Gamma(k_gamma_prior_shape,
+                  typical_k_value/k_gamma_prior_shape),
+            stiffer_principal_stiffness
+        ) +
+        logpdf(
+            Gamma(k_gamma_prior_shape,
+                  typical_k_value/k_gamma_prior_shape),
+            softer_principal_stiffness
+        )
+
+    # Your proposals operate in (kxx, kyy, rho_xy), where
+    # kxy = rho_xy*sqrt(kxx*kyy).
+    # Include the change-of-variables Jacobian.
+    log_prior += 0.5*(log(kxx) + log(kyy))
+
+    return log_prior
+end
+
+
 function prepare_OU!(dwell, 
     	diffusion_coeff,
 	dynamics_matrix,
@@ -346,8 +382,63 @@ function prepare_OU!(dwell,
 	dynamics_matrix[dwell, :, :] .= exp(-diffusion_coeff * dt / (kb * T) * view(stiffness_matrix, dwell, :, :))
 
     	# Exact OU covariance
-	OU_covariance[dwell, :, :] .= kb * T * view(inv_stiffness_matrix, dwell, :, :) * 
-					(I - view(dynamics_matrix, dwell, :, :) * view(dynamics_matrix, dwell, :, :))
+	#OU_covariance[dwell, :, :] .= kb * T * view(inv_stiffness_matrix, dwell, :, :) * 
+	#				(I - view(dynamics_matrix, dwell, :, :) * view(dynamics_matrix, dwell, :, :))
+	 
+	kxx = stiffness_matrix[dwell, 1, 1]
+	kyy = stiffness_matrix[dwell, 2, 2]
+	kxy = stiffness_matrix[dwell, 1, 2]
+	
+	# Stiffnesses along the two principal directions.
+	stiffer_principal_stiffness =
+	    (kxx + kyy + hypot(kxx - kyy, 2*kxy))/2
+	
+	softer_principal_stiffness =
+	    det_stiffness[dwell]/stiffer_principal_stiffness
+	
+	# Orientation of the stiffer principal direction.
+	stiffer_direction_angle = atan(2*kxy, kxx - kyy)/2
+	stiffer_direction_x_component = cos(stiffer_direction_angle)
+	stiffer_direction_y_component = sin(stiffer_direction_angle)
+	
+	free_diffusion_variance = 2*diffusion_coeff*dt
+	
+	# Dimensionless variance relaxation exponents.
+	stiffer_direction_variance_decay_exponent =
+	    free_diffusion_variance*stiffer_principal_stiffness/(kb*T)
+	
+	softer_direction_variance_decay_exponent =
+	    free_diffusion_variance*softer_principal_stiffness/(kb*T)
+	
+	# Stable OU variances, including the zero-stiffness limit.
+	stiffer_direction_OU_variance =
+	    stiffer_direction_variance_decay_exponent == 0.0 ?
+	    free_diffusion_variance :
+	    free_diffusion_variance *
+	    (-expm1(-stiffer_direction_variance_decay_exponent) /
+	     stiffer_direction_variance_decay_exponent)
+	
+	softer_direction_OU_variance =
+	    softer_direction_variance_decay_exponent == 0.0 ?
+	    free_diffusion_variance :
+	    free_diffusion_variance *
+	    (-expm1(-softer_direction_variance_decay_exponent) /
+	     softer_direction_variance_decay_exponent)
+	
+	# Express the covariance in the original x–y coordinates.
+	OU_covariance[dwell, 1, 1] =
+	    stiffer_direction_OU_variance*stiffer_direction_x_component^2 +
+	    softer_direction_OU_variance*stiffer_direction_y_component^2
+	
+	OU_covariance[dwell, 2, 2] =
+	    stiffer_direction_OU_variance*stiffer_direction_y_component^2 +
+	    softer_direction_OU_variance*stiffer_direction_x_component^2
+	
+	OU_covariance[dwell, 1, 2] =
+	    (stiffer_direction_OU_variance - softer_direction_OU_variance) *
+	    stiffer_direction_x_component*stiffer_direction_y_component
+	
+	OU_covariance[dwell, 2, 1] = OU_covariance[dwell, 1, 2]
 
 	det_OU_covariance[dwell] = det(view(OU_covariance, dwell, :, :))
 
@@ -363,6 +454,10 @@ function prepare_OU!(dwell,
     	inv_OU_covariance[dwell, 2,2] =
 		OU_covariance[dwell, 1,1] / det_OU_covariance[dwell]
 
+	if !isposdef(Symmetric(OU_covariance[dwell,:,:])) || !isposdef(Symmetric(inv_OU_covariance[dwell,:,:]))
+    		@show dwell diffusion_coeff stiffness_matrix[dwell,:,:] OU_covariance[dwell,:,:] inv_OU_covariance[dwell,:,:]
+    		error("Invalid OU covariance or precision")
+	end
 	return nothing
 end
 
@@ -378,11 +473,11 @@ function get_log_likelihood!(dwell,
 
 
 	if !isfinite(det_stiffness[dwell]) || det_stiffness[dwell] <= 0.0
-    		return -Inf
+		return -Inf
 	end
 
 	if !isfinite(det_OU_covariance[dwell]) || det_OU_covariance[dwell] <= 0.0
-    	    return -Inf
+		return -Inf
     	end
 
 	log_norm_const = -0.5 * log((2.0 * π)^2 * det_OU_covariance[dwell])
@@ -417,6 +512,14 @@ function get_log_likelihood!(dwell,
    	    	    inv_OU_covariance[dwell, 1,1] * residual_x^2 +
    	    	    2.0 * inv_OU_covariance[dwell, 1,2] * residual_x * residual_y +
    	    	    inv_OU_covariance[dwell, 2,2] * residual_y^2
+
+		if !isfinite(quad_form) || quad_form < 0
+    			println("Invalid OU quadratic error: dwell=", dwell,
+    			        ", quad_form=", quad_form,
+    			        ", residual_x=", residual_x,
+    			        ", residual_y=", residual_y)
+    			error("Invalid OU quadratic error")
+		end
 
    	    	log_likelihood += log_norm_const - 0.5 * quad_form
     	end

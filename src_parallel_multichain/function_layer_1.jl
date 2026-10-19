@@ -87,14 +87,7 @@ function sample_loads!(draw,
 
 	accepted = 0
 	log_posterior = 0.0
-	old_log_prior = 0.0
-	proposed_log_prior = 0.0
-	old_log_likelihood = 0.0
-	proposed_log_likelihood = 0.0
 
-	#if draw > save_burn_in_period
-	#	@show n_change_points
-	#end
 
 	# Changepoints 1 & last one are always on
 	for change_point in 2:max_n_change_points-1
@@ -105,6 +98,8 @@ function sample_loads!(draw,
 				findfirst(x-> x > change_point, view(loads_active, 1:n_change_points)) 
 
 		if loads[change_point] == 0
+
+			old_log_prior = log_prior_off 
 
 			time_range = change_points_index[loads_active[previous_active_change_point_index]]+
 					1:change_points_index[loads_active[next_active_change_point_index]]
@@ -126,10 +121,26 @@ function sample_loads!(draw,
 							change_points_time[loads_active[next_active_change_point_index]] - 
 							change_points_time[loads_active[previous_active_change_point_index]])
 
-			old_log_prior = log_prior_off 
+
+			if (n_change_points > 2) && (loads_active[next_active_change_point_index] < max_n_change_points)
+
+				previous_position_x = position_x[loads_active[previous_active_change_point_index]]
+ 				previous_position_y = position_y[loads_active[previous_active_change_point_index]]
+				next_position_x = position_x[loads_active[next_active_change_point_index]]
+ 				next_position_y = position_y[loads_active[next_active_change_point_index]]
+
+			 	jump_size = sqrt((next_position_x - previous_position_x)^2 + 
+			 				      (next_position_y - previous_position_y)^2)
+
+				old_log_prior += logpdf(Normal(typical_jump_size, std_jump_size_prior), jump_size)
+
+			end
+
 
 			#Proposal
 			loads[change_point] = change_point
+			proposed_log_prior = log_prior_on
+
 			time_range = change_points_index[loads_active[previous_active_change_point_index]]+
 					1:change_points_index[change_point]
 
@@ -148,12 +159,23 @@ function sample_loads!(draw,
 							change_points_time[change_point] - 
 							change_points_time[loads_active[previous_active_change_point_index]])
 
-			if !(minimum(view(detected_position_x, time_range)) < position_x[dwell_index] < maximum(view(detected_position_x, time_range)))
-				proposed_log_likelihood = -Inf
-			end
-			if !(minimum(view(detected_position_y, time_range)) < position_y[dwell_index] < maximum(view(detected_position_y, time_range)))
-				proposed_log_likelihood = -Inf
-			end
+			#if !(minimum(view(detected_position_x, time_range)) < position_x[dwell_index] < maximum(view(detected_position_x, time_range)))
+			#	proposed_log_likelihood = -Inf
+			#end
+			#if !(minimum(view(detected_position_y, time_range)) < position_y[dwell_index] < maximum(view(detected_position_y, time_range)))
+			#	proposed_log_likelihood = -Inf
+			#end
+
+
+			previous_position_x = position_x[dwell_index]
+ 			previous_position_y = position_y[dwell_index]
+			current_position_x = position_x[change_point]
+ 			current_position_y = position_y[change_point]
+
+		 	jump_size = sqrt((current_position_x - previous_position_x)^2 + 
+		 				      (current_position_y - previous_position_y)^2)
+
+			proposed_log_prior += logpdf(Normal(typical_jump_size, std_jump_size_prior), jump_size)
 
 			time_range = change_points_index[change_point]+1:change_points_index[loads_active[next_active_change_point_index]]
 			dwell_index = change_point
@@ -172,14 +194,25 @@ function sample_loads!(draw,
 							change_points_time[loads_active[next_active_change_point_index]] - 
 							change_points_time[change_point])
 
-			if !(minimum(view(detected_position_x, time_range)) < position_x[dwell_index] < maximum(view(detected_position_x, time_range)))
-				proposed_log_likelihood = -Inf
-			end
-			if !(minimum(view(detected_position_y, time_range)) < position_y[dwell_index] < maximum(view(detected_position_y, time_range)))
-				proposed_log_likelihood = -Inf
-			end
+			#if !(minimum(view(detected_position_x, time_range)) < position_x[dwell_index] < maximum(view(detected_position_x, time_range)))
+			#	proposed_log_likelihood = -Inf
+			#end
+			#if !(minimum(view(detected_position_y, time_range)) < position_y[dwell_index] < maximum(view(detected_position_y, time_range)))
+			#	proposed_log_likelihood = -Inf
+			#end
 
-			proposed_log_prior = log_prior_on
+			if loads_active[next_active_change_point_index] < max_n_change_points
+
+				current_position_x = position_x[dwell_index]
+ 				current_position_y = position_y[dwell_index]
+				next_position_x = position_x[loads_active[next_active_change_point_index]]
+ 				next_position_y = position_y[loads_active[next_active_change_point_index]]
+
+		 		jump_size = sqrt((next_position_x - current_position_x)^2 + 
+		 					      (next_position_y - current_position_y)^2)
+
+				proposed_log_prior += logpdf(Normal(typical_jump_size, std_jump_size_prior), jump_size)
+			end
 
 			old_log_posterior = old_log_likelihood + old_log_prior
 			proposed_log_posterior = proposed_log_likelihood + proposed_log_prior
@@ -195,6 +228,8 @@ function sample_loads!(draw,
 
 
 		elseif loads[change_point] != 0
+
+			old_log_prior = log_prior_on 
 
 			time_range = change_points_index[loads_active[previous_active_change_point_index]]+
 					1:change_points_index[change_point]
@@ -213,6 +248,17 @@ function sample_loads!(draw,
 							change_points_time[change_point] - 
 							change_points_time[loads_active[previous_active_change_point_index]])
 
+			previous_position_x = position_x[dwell_index]
+ 			previous_position_y = position_y[dwell_index]
+			current_position_x = position_x[change_point]
+ 			current_position_y = position_y[change_point]
+
+		 	jump_size = sqrt((current_position_x - previous_position_x)^2 + 
+		 				      (current_position_y - previous_position_y)^2)
+
+			old_log_prior += logpdf(Normal(typical_jump_size, std_jump_size_prior), jump_size)
+
+
 			time_range = change_points_index[change_point]+1:change_points_index[loads_active[next_active_change_point_index]]
 			dwell_index = change_point 
 			old_log_likelihood += get_log_likelihood!(dwell_index,
@@ -229,9 +275,22 @@ function sample_loads!(draw,
 							change_points_time[loads_active[next_active_change_point_index]] - 
 							change_points_time[change_point])
 
-			old_log_prior = log_prior_on 
+			if loads_active[next_active_change_point_index] < max_n_change_points
 
+				current_position_x = position_x[dwell_index]
+ 				current_position_y = position_y[dwell_index]
+				next_position_x = position_x[loads_active[next_active_change_point_index]]
+ 				next_position_y = position_y[loads_active[next_active_change_point_index]]
+
+		 		jump_size = sqrt((next_position_x - current_position_x)^2 + 
+		 					      (next_position_y - current_position_y)^2)
+
+				old_log_prior += logpdf(Normal(typical_jump_size, std_jump_size_prior), jump_size)
+			end
+
+			# Proposal
 			loads[change_point] = 0
+			proposed_log_prior = log_prior_off
 
 			time_range = change_points_index[loads_active[previous_active_change_point_index]]+
 					1:change_points_index[loads_active[next_active_change_point_index]]
@@ -249,23 +308,35 @@ function sample_loads!(draw,
 							dwell_gamma_mean/dwell_gamma_shape), 
 							change_points_time[loads_active[next_active_change_point_index]] - 
 							change_points_time[loads_active[previous_active_change_point_index]])
-
-			if loads_active[next_active_change_point_index] < max_n_change_points
+			if (n_change_points - 1 > 2) && (loads_active[next_active_change_point_index] < max_n_change_points)
 
 				previous_position_x = position_x[loads_active[previous_active_change_point_index]]
  				previous_position_y = position_y[loads_active[previous_active_change_point_index]]
 				next_position_x = position_x[loads_active[next_active_change_point_index]]
  				next_position_y = position_y[loads_active[next_active_change_point_index]]
 
-				jump_size = sqrt((next_position_x - previous_position_x)^2 + 
-						      (next_position_y - previous_position_y)^2)
+			 	jump_size = sqrt((next_position_x - previous_position_x)^2 + 
+			 				      (next_position_y - previous_position_y)^2)
 
-				if jump_size > maximum_allowed_jump_size
-					proposed_log_likelihood = -Inf
-				end
+				proposed_log_prior += logpdf(Normal(typical_jump_size, std_jump_size_prior), jump_size)
+
 			end
 
-			proposed_log_prior = log_prior_off
+			#if loads_active[next_active_change_point_index] < max_n_change_points
+
+			#	previous_position_x = position_x[loads_active[previous_active_change_point_index]]
+ 			#	previous_position_y = position_y[loads_active[previous_active_change_point_index]]
+			#	next_position_x = position_x[loads_active[next_active_change_point_index]]
+ 			#	next_position_y = position_y[loads_active[next_active_change_point_index]]
+
+			#	jump_size = sqrt((next_position_x - previous_position_x)^2 + 
+			#			      (next_position_y - previous_position_y)^2)
+
+			#	if jump_size > maximum_allowed_jump_size
+			#		proposed_log_likelihood = -Inf
+			#	end
+			#end
+
 
 			old_log_posterior = old_log_likelihood + old_log_prior
 			proposed_log_posterior = proposed_log_likelihood + proposed_log_prior
@@ -353,6 +424,21 @@ function sample_change_points_time!(draw,
 				findlast(x-> x < change_point, view(loads_active, 1:n_change_points)) 
 		previous_active_change_point = loads_active[previous_active_change_point_index]
 
+		old_position_x::Float64 = position_x[change_point-1]
+		old_position_y::Float64 = position_y[change_point-1]
+
+		mean_x = mean(view(detected_position_x, change_points_index[change_point-1]:change_points_index[change_point]))
+		mean_y = mean(view(detected_position_y, change_points_index[change_point-1]:change_points_index[change_point]))
+
+		old_log_prior += logpdf(Normal(mean_x, std_position_prior), old_position_x) +
+						 logpdf(Normal(mean_y, std_position_prior), old_position_y)
+
+		mean_x = mean(view(detected_position_x, proposed_change_points_index[change_point-1]:proposed_change_points_index[change_point]))
+		mean_y = mean(view(detected_position_y, proposed_change_points_index[change_point-1]:proposed_change_points_index[change_point]))
+
+		proposed_log_prior += logpdf(Normal(mean_x, std_position_prior), old_position_x) +
+						 logpdf(Normal(mean_y, std_position_prior), old_position_y)
+
 		if loads[change_point] != 0
 
 			time_range = change_points_index[previous_active_change_point]+1:change_points_index[change_point]
@@ -372,6 +458,7 @@ function sample_change_points_time!(draw,
 							change_points_time[change_point] - 
 							       change_points_time[previous_active_change_point])
 
+
 			if valid_proposal
 				time_range = proposed_change_points_index[previous_active_change_point]+1:proposed_change_points_index[change_point]
 				dwell_index = previous_active_change_point 
@@ -389,6 +476,8 @@ function sample_change_points_time!(draw,
 								dwell_gamma_mean/dwell_gamma_shape), 
 								proposed_change_points_time[change_point] - 
 								       proposed_change_points_time[previous_active_change_point])
+
+
 			end
 		end
 	end
@@ -457,89 +546,38 @@ function sample_positions!(draw,
 		annealing_temperature)
 
 	accepted::Integer = 0
-	old_log_prior::Float64 = 0.0
-	proposed_log_prior::Float64 = 0.0
-	old_log_likelihood::Float64 = 0.0
-	proposed_log_likelihood::Float64 = 0.0
-
-	n_active_dwells = n_change_points - 1
-	n_inactive_dwells = max_n_dwells - n_active_dwells
 
 	# Dwell 1 is always on
-	for dwell in 1:n_active_dwells
+	n_dwells = n_change_points - 1
+	for dwell in 1:max_n_dwells
 
-		time_range = change_points_index[loads_active[dwell]]+1:change_points_index[loads_active[dwell+1]]
+		old_position_x::Float64 = position_x[dwell]
+		old_position_y::Float64 = position_y[dwell]
 
-		dwell_index = loads_active[dwell]
-		old_position_x::Float64 = position_x[dwell_index]
-		old_position_y::Float64 = position_y[dwell_index]
-		old_log_likelihood = get_log_likelihood!(dwell_index,
-		    			position_x[dwell_index],
-		    			position_y[dwell_index],
-					dynamics_matrix,
-					det_stiffness,
-					OU_covariance,
-					inv_OU_covariance,
-					det_OU_covariance,
-		    			time_range)
+		old_log_likelihood = 0.0
+		proposed_log_likelihood = 0.0
 
-		mean_x = mean(view(detected_position_x, time_range))
-		mean_y = mean(view(detected_position_y, time_range))
+		old_log_prior = 0.0
+		proposed_log_prior = 0.0
 
-		if 1 < dwell < n_active_dwells
-
-
-			previous_position_x = position_x[loads_active[dwell-1]]
- 			previous_position_y = position_y[loads_active[dwell-1]]
-			next_position_x = position_x[loads_active[dwell+1]]
- 			next_position_y = position_y[loads_active[dwell+1]]
-
-
-			previous_jump_size = sqrt((old_position_x - previous_position_x)^2 + 
-						      (old_position_y - previous_position_y)^2)
-			next_jump_size = sqrt((next_position_x - old_position_x)^2 + 
-						      (next_position_y - old_position_y)^2)
-
-			old_log_prior = logpdf(Normal(typical_jump_size, std_jump_size_prior), previous_jump_size) +
-						 logpdf(Normal(typical_jump_size, std_jump_size_prior), next_jump_size)
-
-		elseif dwell == 1 && n_active_dwells > 1
-
-			next_position_x = position_x[loads_active[dwell+1]]
- 			next_position_y = position_y[loads_active[dwell+1]]
-
-			next_jump_size = sqrt((next_position_x - old_position_x)^2 + 
-						      (next_position_y - old_position_y)^2)
-			old_log_prior = logpdf(Normal(typical_jump_size, std_jump_size_prior), next_jump_size)
-
-			old_log_prior += logpdf(Normal(mean_first_100_positions_x, typical_jump_size/2.0), old_position_x) +
-					logpdf(Normal(mean_first_100_positions_y, typical_jump_size/2.0), old_position_y)
-
-		elseif dwell == n_active_dwells && n_active_dwells > 1
-
-			previous_position_x = position_x[loads_active[dwell-1]]
- 			previous_position_y = position_y[loads_active[dwell-1]]
-
-			previous_jump_size = sqrt((old_position_x - previous_position_x)^2 + 
-						      (old_position_y - previous_position_y)^2)
-
-			old_log_prior = logpdf(Normal(typical_jump_size, std_jump_size_prior), previous_jump_size) 
-
-			old_log_prior += logpdf(Normal(mean_last_100_positions_x, typical_jump_size/2.0), old_position_x) +
-					logpdf(Normal(mean_last_100_positions_y, typical_jump_size/2.0), old_position_y)
-
-		end
-		old_log_prior += logpdf(Normal(mean_x, std_jump_size_prior/2.0), old_position_x) +
-						 logpdf(Normal(mean_y, std_jump_size_prior/2.0), old_position_y)
+		mean_x = mean(view(detected_position_x, change_points_index[dwell]:change_points_index[dwell+1]))
+		mean_y = mean(view(detected_position_y, change_points_index[dwell]:change_points_index[dwell+1]))
 
  		proposed_position_x::Float64 = rand(rng, Normal(old_position_x, step_size_position_sampler))
  		proposed_position_y::Float64 = rand(rng, Normal(old_position_y, step_size_position_sampler))
- 
-		position_x[dwell_index] = proposed_position_x
-		position_y[dwell_index] = proposed_position_y
-		proposed_log_likelihood = get_log_likelihood!(dwell_index,
-		    			position_x[dwell_index],
-		    			position_y[dwell_index],
+
+
+		if loads[dwell] != 0
+
+			active_dwell_index = findfirst(x-> x==dwell, view(loads_active, 1:n_change_points))
+			change_point_start = loads_active[active_dwell_index]
+			change_point_end = loads_active[active_dwell_index+1] 
+
+			time_range = change_points_index[change_point_start]+1:change_points_index[change_point_end]
+
+			old_log_likelihood += get_log_likelihood!(dwell,
+		    			old_position_x,
+		    			old_position_y,
 					dynamics_matrix,
 					det_stiffness,
 					OU_covariance,
@@ -547,57 +585,84 @@ function sample_positions!(draw,
 					det_OU_covariance,
 		    			time_range)
 
-		if !(minimum(view(detected_position_x, time_range)) < proposed_position_x < maximum(view(detected_position_x, time_range)))
-			proposed_log_likelihood = -Inf
+			proposed_log_likelihood += get_log_likelihood!(dwell,
+		    			proposed_position_x,
+		    			proposed_position_y,
+					dynamics_matrix,
+					det_stiffness,
+					OU_covariance,
+					inv_OU_covariance,
+					det_OU_covariance,
+		    			time_range)
+
+
+			if 1 < active_dwell_index < n_dwells
+
+				previous_position_x = position_x[loads_active[active_dwell_index-1]]
+ 				previous_position_y = position_y[loads_active[active_dwell_index-1]]
+				next_position_x = position_x[loads_active[active_dwell_index+1]]
+ 				next_position_y = position_y[loads_active[active_dwell_index+1]]
+
+				previous_jump_size = sqrt((old_position_x - previous_position_x)^2 + 
+							      (old_position_y - previous_position_y)^2)
+				next_jump_size = sqrt((next_position_x - old_position_x)^2 + 
+							      (next_position_y - old_position_y)^2)
+
+				old_log_prior += logpdf(Normal(typical_jump_size, std_jump_size_prior), previous_jump_size) +
+							 logpdf(Normal(typical_jump_size, std_jump_size_prior), next_jump_size)
+
+				previous_jump_size = sqrt((proposed_position_x - previous_position_x)^2 + 
+							      (proposed_position_y - previous_position_y)^2)
+				next_jump_size = sqrt((next_position_x - proposed_position_x)^2 + 
+							      (next_position_y - proposed_position_y)^2)
+
+				proposed_log_prior += logpdf(Normal(typical_jump_size, std_jump_size_prior), previous_jump_size) +
+							 logpdf(Normal(typical_jump_size, std_jump_size_prior), next_jump_size)
+
+			elseif active_dwell_index == 1 && n_dwells > 1
+
+				next_position_x = position_x[loads_active[active_dwell_index+1]]
+ 				next_position_y = position_y[loads_active[active_dwell_index+1]]
+
+				next_jump_size = sqrt((next_position_x - old_position_x)^2 + 
+							      (next_position_y - old_position_y)^2)
+				old_log_prior += logpdf(Normal(typical_jump_size, std_jump_size_prior), next_jump_size)
+
+				next_jump_size = sqrt((next_position_x - proposed_position_x)^2 + 
+							      (next_position_y - proposed_position_y)^2)
+				proposed_log_prior += logpdf(Normal(typical_jump_size, std_jump_size_prior), next_jump_size)
+
+			elseif active_dwell_index == n_dwells && n_dwells > 1
+
+				previous_position_x = position_x[loads_active[active_dwell_index-1]]
+ 				previous_position_y = position_y[loads_active[active_dwell_index-1]]
+
+				previous_jump_size = sqrt((old_position_x - previous_position_x)^2 + 
+							      (old_position_y - previous_position_y)^2)
+
+				old_log_prior += logpdf(Normal(typical_jump_size, std_jump_size_prior), previous_jump_size) 
+
+				previous_jump_size = sqrt((proposed_position_x - previous_position_x)^2 + 
+							      (proposed_position_y - previous_position_y)^2)
+
+				proposed_log_prior += logpdf(Normal(typical_jump_size, std_jump_size_prior), previous_jump_size) 
+
+			end
+
+			#if !(minimum(view(detected_position_x, time_range)) < proposed_position_x < maximum(view(detected_position_x, time_range)))
+			#	proposed_log_likelihood = -Inf
+			#end
+			#if !(minimum(view(detected_position_y, time_range)) < proposed_position_y < maximum(view(detected_position_y, time_range)))
+			#	proposed_log_likelihood = -Inf
+			#end
+
 		end
-		if !(minimum(view(detected_position_y, time_range)) < proposed_position_y < maximum(view(detected_position_y, time_range)))
-			proposed_log_likelihood = -Inf
-		end
 
-		if 1 < dwell < n_active_dwells
+		old_log_prior += logpdf(Normal(mean_x, std_position_prior), old_position_x) +
+						 logpdf(Normal(mean_y, std_position_prior), old_position_y)
 
-			previous_position_x = position_x[loads_active[dwell-1]]
- 			previous_position_y = position_y[loads_active[dwell-1]]
-			next_position_x = position_x[loads_active[dwell+1]]
- 			next_position_y = position_y[loads_active[dwell+1]]
-
-
-			previous_jump_size = sqrt((proposed_position_x - previous_position_x)^2 + 
-						      (proposed_position_y - previous_position_y)^2)
-			next_jump_size = sqrt((next_position_x - proposed_position_x)^2 + 
-						      (next_position_y - proposed_position_y)^2)
-
-			proposed_log_prior = logpdf(Normal(typical_jump_size, std_jump_size_prior), previous_jump_size) +
-						 logpdf(Normal(typical_jump_size, std_jump_size_prior), next_jump_size)
-
-		elseif dwell == 1 && n_active_dwells > 1
-
-			next_position_x = position_x[loads_active[dwell+1]]
- 			next_position_y = position_y[loads_active[dwell+1]]
-
-			next_jump_size = sqrt((next_position_x - proposed_position_x)^2 + 
-						      (next_position_y - proposed_position_y)^2)
-			proposed_log_prior = logpdf(Normal(typical_jump_size, std_jump_size_prior), next_jump_size)
-
-			proposed_log_prior += logpdf(Normal(mean_first_100_positions_x, typical_jump_size/2.0), proposed_position_x) +
-					logpdf(Normal(mean_first_100_positions_y, typical_jump_size/2.0), proposed_position_y)
-
-		elseif dwell == n_active_dwells && n_active_dwells > 1
-
-			previous_position_x = position_x[loads_active[dwell-1]]
- 			previous_position_y = position_y[loads_active[dwell-1]]
-
-			previous_jump_size = sqrt((proposed_position_x - previous_position_x)^2 + 
-						      (proposed_position_y - previous_position_y)^2)
-
-			proposed_log_prior = logpdf(Normal(typical_jump_size, std_jump_size_prior), previous_jump_size) 
-
-			proposed_log_prior += logpdf(Normal(mean_last_100_positions_x, typical_jump_size/2.0), proposed_position_x) +
-					logpdf(Normal(mean_last_100_positions_y, typical_jump_size/2.0), proposed_position_y)
-
-		end
-		proposed_log_prior += logpdf(Normal(mean_x, std_jump_size_prior/2.0), proposed_position_x) +
-						 logpdf(Normal(mean_y, std_jump_size_prior/2.0), proposed_position_y)
+ 		proposed_log_prior += logpdf(Normal(mean_x, std_position_prior), proposed_position_x) +
+						 logpdf(Normal(mean_y, std_position_prior), proposed_position_y)
 
 
 		old_log_posterior::Float64 = old_log_likelihood + old_log_prior
@@ -607,108 +672,69 @@ function sample_positions!(draw,
 
 		if log_hastings >= log(rand(rng))
 			accepted += 1
-		else
-			position_x[dwell_index] = old_position_x
-			position_y[dwell_index] = old_position_y
+			position_x[dwell] = proposed_position_x
+			position_y[dwell] = proposed_position_y
 		end
 	end
 
-	if n_inactive_dwells > 0
-		for dwell in 1:n_inactive_dwells
+	return accepted/max_n_dwells
+end
 
-			dwell_index = loads_inactive[dwell]
-			old_position_x::Float64 = position_x[dwell_index]
-			old_position_y::Float64 = position_y[dwell_index]
+function sample_dwell_gamma(draw, 
+		change_points_time, 
+		change_points_index,
+		dwell_gamma_shape,
+		dwell_gamma_mean,
+		loads,
+		loads_active,
+		loads_inactive, 
+		n_change_points,
+		annealing_temperature)
 
+	accepted = 0
 
-			previous_active_dwell_index = 
-				findlast(x-> x < dwell_index, view(loads_active, 1:n_change_points)) 
-			next_active_dwell_index = 
-				findfirst(x-> x > dwell_index, view(loads_active, 1:n_change_points)) 
+	old_log_likelihood = 0.0
+	proposed_log_likelihood = 0.0
 
-			old_log_likelihood = 0.0 
+	proposed_dwell_gamma_shape = rand(rng, collect(dwell_gamma_shape_uniform_prior_min:dwell_gamma_shape_uniform_prior_max)) 
+	proposed_dwell_gamma_mean = exp(rand(rng, Normal(log(dwell_gamma_mean), step_size_dwell_gamma)))
 
-			if 0 < previous_active_dwell_index < n_active_dwells && 1 < next_active_dwell_index < n_active_dwells+1
+	for change_point in 2:max_n_change_points
 
-				previous_position_x = position_x[loads_active[previous_active_dwell_index]]
- 				previous_position_y = position_y[loads_active[previous_active_dwell_index]]
-				next_position_x = position_x[loads_active[next_active_dwell_index]]
- 				next_position_y = position_y[loads_active[next_active_dwell_index]]
+		previous_active_change_point_index = 
+				findlast(x-> x < change_point, view(loads_active, 1:n_change_points)) 
+		previous_active_change_point = loads_active[previous_active_change_point_index]
 
+		if loads[change_point] != 0
 
-				previous_jump_size = sqrt((old_position_x - previous_position_x)^2 + 
-							      (old_position_y - previous_position_y)^2)
-			 	next_jump_size = sqrt((next_position_x - old_position_x)^2 + 
-			 				      (next_position_y - old_position_y)^2)
+			old_log_likelihood += logpdf(Gamma(dwell_gamma_shape,
+							dwell_gamma_mean/dwell_gamma_shape), 
+							change_points_time[change_point] - 
+							       change_points_time[previous_active_change_point])
 
-				old_log_prior = logpdf(Normal(typical_jump_size, std_jump_size_prior), previous_jump_size) +
-							 logpdf(Normal(typical_jump_size, std_jump_size_prior), next_jump_size)
-
-			elseif next_active_dwell_index == n_active_dwells+1
-
-				previous_position_x = position_x[loads_active[previous_active_dwell_index]]
-				previous_position_y = position_y[loads_active[previous_active_dwell_index]]
-
-				previous_jump_size = sqrt((old_position_x - previous_position_x)^2 + 
-							      (old_position_y - previous_position_y)^2)
-
-				old_log_prior = logpdf(Normal(typical_jump_size, std_jump_size_prior), previous_jump_size)
-
-			end
-
-			old_log_posterior::Float64 = old_log_likelihood + old_log_prior
-
- 			proposed_position_x::Float64 = rand(rng, Normal(old_position_x, step_size_position_sampler))
- 			proposed_position_y::Float64 = rand(rng, Normal(old_position_y, step_size_position_sampler))
- 
-			position_x[dwell_index] = proposed_position_x
-			position_y[dwell_index] = proposed_position_y
-
-			proposed_log_likelihood = 0.0 
-
-			if 0 < previous_active_dwell_index < n_active_dwells && 1 < next_active_dwell_index < n_active_dwells+1
-
-				previous_position_x = position_x[loads_active[previous_active_dwell_index]]
- 				previous_position_y = position_y[loads_active[previous_active_dwell_index]]
-				next_position_x = position_x[loads_active[next_active_dwell_index]]
- 				next_position_y = position_y[loads_active[next_active_dwell_index]]
-
-
-				previous_jump_size = sqrt((proposed_position_x - previous_position_x)^2 + 
-							      (proposed_position_y - previous_position_y)^2)
-				next_jump_size = sqrt((next_position_x - proposed_position_x)^2 + 
-							      (next_position_y - proposed_position_y)^2)
-
-				proposed_log_prior = logpdf(Normal(typical_jump_size, std_jump_size_prior), previous_jump_size) +
-							logpdf(Normal(typical_jump_size, std_jump_size_prior), next_jump_size)
-
-			elseif next_active_dwell_index == n_active_dwells+1
-
-				previous_position_x = position_x[loads_active[previous_active_dwell_index]]
- 				previous_position_y = position_y[loads_active[previous_active_dwell_index]]
-
-				previous_jump_size = sqrt((proposed_position_x - previous_position_x)^2 + 
-							      (proposed_position_y - previous_position_y)^2)
-
-				proposed_log_prior = logpdf(Normal(typical_jump_size, std_jump_size_prior), previous_jump_size)
-
-			end
-
-			proposed_log_posterior::Float64 = proposed_log_likelihood + proposed_log_prior
-
-			log_hastings = (proposed_log_posterior - old_log_posterior)
-
-			if log_hastings >= log(rand(rng))
-				accepted += 0
-			else
-				position_x[dwell_index] = old_position_x
-				position_y[dwell_index] = old_position_y
-			end
+			proposed_log_likelihood += logpdf(Gamma(proposed_dwell_gamma_shape,
+							proposed_dwell_gamma_mean/proposed_dwell_gamma_shape), 
+							change_points_time[change_point] - 
+							       change_points_time[previous_active_change_point])
 
 		end
 	end
 
-	return accepted/(n_change_points-1)
+ 	old_log_prior = logpdf(Gamma(dwell_gamma_mean_prior_shape, dwell_gamma_mean_prior_scale), dwell_gamma_mean)
+ 	proposed_log_prior = logpdf(Gamma(dwell_gamma_mean_prior_shape, dwell_gamma_mean_prior_scale), proposed_dwell_gamma_mean)
+
+	old_log_posterior::Float64 = old_log_likelihood + old_log_prior
+	proposed_log_posterior::Float64 = proposed_log_likelihood + proposed_log_prior
+	log_hastings = 1.0/annealing_temperature * (proposed_log_posterior - old_log_posterior) + 
+				(log(proposed_dwell_gamma_mean) - log(dwell_gamma_mean))  
+
+	if log_hastings >= log(rand(rng))
+		accepted += 1
+		dwell_gamma_shape = proposed_dwell_gamma_shape
+		dwell_gamma_mean = proposed_dwell_gamma_mean
+	end
+
+	return dwell_gamma_shape, dwell_gamma_mean, accepted
 end
 
 function sample_stiffness!(draw, 
@@ -765,9 +791,10 @@ function sample_stiffness!(draw,
 					det_OU_covariance,
 		    			time_range)
 
-		old_log_prior = logpdf(Gamma(k_gamma_prior_shape, typical_k_value/k_gamma_prior_shape), old_k_xx)
-		old_log_prior += logpdf(Gamma(k_gamma_prior_shape, typical_k_value/k_gamma_prior_shape), old_k_yy)
-		old_log_prior += logpdf(Uniform(-1.0, 1.0), old_rho_xy)
+		old_log_prior = get_log_stiffness_prior(old_k_xx, old_k_yy, old_k_xy)
+		#old_log_prior = logpdf(Gamma(k_gamma_prior_shape, typical_k_value/k_gamma_prior_shape), old_k_xx)
+		#old_log_prior += logpdf(Gamma(k_gamma_prior_shape, typical_k_value/k_gamma_prior_shape), old_k_yy)
+		#old_log_prior += logpdf(Uniform(-1.0, 1.0), old_rho_xy)
 
 
 		proposed_k_xx::Float64 = rand(rng, Gamma(stiffness_gamma_proposal_alpha, 
@@ -809,9 +836,11 @@ function sample_stiffness!(draw,
 					det_OU_covariance,
 		    			time_range)
 
-		proposed_log_prior = logpdf(Gamma(k_gamma_prior_shape, typical_k_value/k_gamma_prior_shape), proposed_k_xx)
-		proposed_log_prior += logpdf(Gamma(k_gamma_prior_shape, typical_k_value/k_gamma_prior_shape), proposed_k_yy)
-		proposed_log_prior += logpdf(Uniform(-1.0, 1.0), proposed_rho_xy)
+		#proposed_log_prior = logpdf(Gamma(k_gamma_prior_shape, typical_k_value/k_gamma_prior_shape), proposed_k_xx)
+		#proposed_log_prior += logpdf(Gamma(k_gamma_prior_shape, typical_k_value/k_gamma_prior_shape), proposed_k_yy)
+		#proposed_log_prior += logpdf(Uniform(-1.0, 1.0), proposed_rho_xy)
+
+		proposed_log_prior = get_log_stiffness_prior(proposed_k_xx, proposed_k_yy, proposed_k_xy)
 
 		old_log_posterior::Float64 = old_log_likelihood + old_log_prior
 		proposed_log_posterior::Float64 = proposed_log_likelihood + proposed_log_prior
@@ -882,9 +911,11 @@ function sample_stiffness!(draw,
 		                  max(-1.0 + eps(Float64), old_rho_xy))
 
 			old_log_likelihood = 0.0 
-			old_log_prior = logpdf(Gamma(1.0, typical_k_value), old_k_xx)
-			old_log_prior += logpdf(Gamma(1.0, typical_k_value), old_k_yy)
-			old_log_prior += logpdf(Uniform(-1.0, 1.0), old_rho_xy)
+			#old_log_prior = logpdf(Gamma(1.0, typical_k_value), old_k_xx)
+			#old_log_prior += logpdf(Gamma(1.0, typical_k_value), old_k_yy)
+			#old_log_prior += logpdf(Uniform(-1.0, 1.0), old_rho_xy)
+			 
+			old_log_prior = get_log_stiffness_prior(old_k_xx, old_k_yy, old_k_xy)
 
 			proposed_k_xx::Float64 = rand(rng, Gamma(stiffness_gamma_proposal_alpha, 
 								old_k_xx/stiffness_gamma_proposal_alpha))
@@ -916,10 +947,11 @@ function sample_stiffness!(draw,
 				det_OU_covariance)
 
 			proposed_log_likelihood = 0.0
-			proposed_log_prior = logpdf(Gamma(1.0, typical_k_value), proposed_k_xx)
-			proposed_log_prior += logpdf(Gamma(1.0, typical_k_value), proposed_k_yy)
-			proposed_log_prior += logpdf(Uniform(-1.0, 1.0), proposed_rho_xy)
+			#proposed_log_prior = logpdf(Gamma(1.0, typical_k_value), proposed_k_xx)
+			#proposed_log_prior += logpdf(Gamma(1.0, typical_k_value), proposed_k_yy)
+			#proposed_log_prior += logpdf(Uniform(-1.0, 1.0), proposed_rho_xy)
 
+			proposed_log_prior = get_log_stiffness_prior(proposed_k_xx, proposed_k_yy, proposed_k_xy)
 
 			old_log_posterior::Float64 = old_log_likelihood + old_log_prior
 			proposed_log_posterior::Float64 = proposed_log_likelihood + proposed_log_prior
@@ -981,71 +1013,6 @@ function sample_stiffness!(draw,
 	return accepted/(n_change_points-1)
 end
 
-function sample_dwell_gamma(draw, 
-		change_points_time, 
-		change_points_index,
-		dwell_gamma_shape,
-		dwell_gamma_mean,
-		loads,
-		loads_active,
-		loads_inactive, 
-		n_change_points,
-		annealing_temperature)
-
-	accepted = 0
-
-	old_log_likelihood = 0.0
-	proposed_log_likelihood = 0.0
-
-	proposed_dwell_gamma_shape = rand(rng, collect(dwell_gamma_shape_uniform_prior_min:dwell_gamma_shape_uniform_prior_max)) #exp(rand(rng, Normal(log(dwell_gamma_shape), step_size_dwell_gamma)))
-	proposed_dwell_gamma_mean = exp(rand(rng, Normal(log(dwell_gamma_mean), step_size_dwell_gamma)))
-
-	for change_point in 2:max_n_change_points
-
-		previous_active_change_point_index = 
-				findlast(x-> x < change_point, view(loads_active, 1:n_change_points)) 
-		previous_active_change_point = loads_active[previous_active_change_point_index]
-
-		if loads[change_point] != 0
-
-			old_log_likelihood += logpdf(Gamma(dwell_gamma_shape,
-							dwell_gamma_mean/dwell_gamma_shape), 
-							change_points_time[change_point] - 
-							       change_points_time[previous_active_change_point])
-
-			proposed_log_likelihood += logpdf(Gamma(proposed_dwell_gamma_shape,
-							proposed_dwell_gamma_mean/proposed_dwell_gamma_shape), 
-							change_points_time[change_point] - 
-							       change_points_time[previous_active_change_point])
-
-		end
-	end
-
-#	old_log_prior = logpdf(Gamma(dwell_gamma_shape_prior_shape, dwell_gamma_shape_prior_scale), dwell_gamma_shape) + 
-#			logpdf(Gamma(dwell_gamma_mean_prior_shape, dwell_gamma_mean_prior_scale), dwell_gamma_mean)
-#	proposed_log_prior = 
-#			logpdf(Gamma(dwell_gamma_shape_prior_shape, dwell_gamma_shape_prior_scale), proposed_dwell_gamma_shape) + 
-#			logpdf(Gamma(dwell_gamma_mean_prior_shape, dwell_gamma_mean_prior_scale), proposed_dwell_gamma_mean)
- 	old_log_prior = #logpdf(Uniform(dwell_gamma_shape_uniform_prior_min, dwell_gamma_shape_uniform_prior_max), dwell_gamma_shape) + 
- 			logpdf(Gamma(dwell_gamma_mean_prior_shape, dwell_gamma_mean_prior_scale), dwell_gamma_mean)
- 	proposed_log_prior = 
- 			#logpdf(Uniform(dwell_gamma_shape_uniform_prior_min, dwell_gamma_shape_uniform_prior_max), proposed_dwell_gamma_shape) + 
- 			logpdf(Gamma(dwell_gamma_mean_prior_shape, dwell_gamma_mean_prior_scale), proposed_dwell_gamma_mean)
-
-	old_log_posterior::Float64 = old_log_likelihood + old_log_prior
-	proposed_log_posterior::Float64 = proposed_log_likelihood + proposed_log_prior
-	log_hastings = 1.0/annealing_temperature * (proposed_log_posterior - old_log_posterior) + 
-			(log(proposed_dwell_gamma_shape) - log(dwell_gamma_shape)) +  
-				(log(proposed_dwell_gamma_mean) - log(dwell_gamma_mean))
-
-	if log_hastings >= log(rand(rng))
-		accepted += 1
-		dwell_gamma_shape = proposed_dwell_gamma_shape
-		dwell_gamma_mean = proposed_dwell_gamma_mean
-	end
-
-	return dwell_gamma_shape, dwell_gamma_mean, accepted
-end
 
 function sample_diffusion_coeff(draw, 
 		position_x, 
@@ -1132,10 +1099,9 @@ function sample_diffusion_coeff(draw,
 		accepted = 0
 	end
 
-	for dwell in 1:n_change_points-1
+	for dwell in 1:max_n_dwells
 
-		dwell_index = loads_active[dwell]
-		prepare_OU!(dwell_index, 
+		prepare_OU!(dwell, 
 		    	diffusion_coeff,
 			dynamics_matrix,
 			stiffness_matrix,

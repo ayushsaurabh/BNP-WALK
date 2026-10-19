@@ -47,8 +47,8 @@ addprocs(n_MCMC_chains)
 	end
 	
 	const prior_on::Float64 =
-			1.0/(1.0 + ((max_n_change_points-2-1)/
-				(expected_n_change_points-2)))
+			1.0/(1.0 + ((max_n_change_points-1-1)/
+				(expected_n_change_points-1)))
 	const log_prior_on::Float64 = log(prior_on)
 	const log_prior_off::Float64 = log(1.0 - prior_on)
 end
@@ -337,7 +337,7 @@ function sampler()
 								proposed_change_points_index,
 								annealing_temperature)
 
-			if (draw-1) % save_burn_in_period <= burn_in_period && modeling_choice == "nonparametric"
+			if ((draw-1) % save_burn_in_period < burn_in_period) && (modeling_choice == "nonparametric")
 
 				accepted_loads, n_change_points = sample_loads!(draw, 
 							position_x, 
@@ -363,13 +363,17 @@ function sampler()
 							det_OU_covariance,
 							annealing_temperature)
 			end
-			if dwell_collapse_required == true
-				if ((draw-1) % save_burn_in_period == burn_in_period) || 
-					((draw-1) % save_burn_in_period == (burn_in_period + 
-						Int64(round((save_burn_in_period - burn_in_period)/2))))
+		end
 
+		if dwell_collapse_required == true
+			#if ((draw-1) % save_burn_in_period == burn_in_period) || 
+			#	((draw-1) % save_burn_in_period == (burn_in_period + 
+			#		Int64(round((save_burn_in_period - burn_in_period)/2))))
+			if (((draw % save_burn_in_period) % 200) == 0) && 
+						(draw % save_burn_in_period != 0)
 
-					n_change_points = collapse_trajectory!(position_x, 
+				println("Collapse Possible")
+				@everywhere workers()  n_change_points = collapse_trajectory!(position_x, 
 									position_y, 
 									change_points_time, 
 									change_points_index,
@@ -378,7 +382,6 @@ function sampler()
 									loads_inactive, 
 									n_change_points)
 
-				end
 			end
 		end
 
@@ -432,6 +435,8 @@ function sampler()
 		mcmc_log_posterior[draw] = @fetchfrom chain_to_plot+1 log_posterior
 		plot_gamma_shape[draw] = @fetchfrom chain_to_plot+1 dwell_gamma_shape
 		plot_diffusion_coeff[draw] = @fetchfrom chain_to_plot+1 diffusion_coeff
+		n_change_points_to_print = @fetchfrom chain_to_plot+1 n_change_points
+
 
 		if draw % output_frequency == 0
 
@@ -446,7 +451,7 @@ function sampler()
 			#jump_sizes .= jump_sizes/(1.0e-9)
 			#@show jump_sizes
 
-			#@show n_change_points
+			@show n_change_points_to_print
 			#@show loads_active[1:n_change_points]
 			#@show change_points_time[loads_active[1:n_change_points]]
 			#@show change_points_index[loads_active[1:n_change_points]]
