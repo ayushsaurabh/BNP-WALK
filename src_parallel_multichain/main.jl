@@ -337,9 +337,8 @@ function sampler()
 								proposed_change_points_index,
 								annealing_temperature)
 
-#			if ((draw-1) % save_burn_in_period < burn_in_period) && (modeling_choice == "nonparametric")
- 
-  			if modeling_choice == "nonparametric"
+ 			if ((draw-1) % save_burn_in_period < burn_in_period) && (modeling_choice == "nonparametric")
+#  			if modeling_choice == "nonparametric"
 
 				accepted_loads, n_change_points = sample_loads!(draw, 
 							position_x, 
@@ -367,25 +366,22 @@ function sampler()
 			end
 		end
 
-		#if dwell_collapse_required == true
-		#	#if ((draw-1) % save_burn_in_period == burn_in_period) || 
-		#	#	((draw-1) % save_burn_in_period == (burn_in_period + 
-		#	#		Int64(round((save_burn_in_period - burn_in_period)/2))))
-		#	if (((draw % save_burn_in_period) % 200) == 0) && 
-		#				(draw % save_burn_in_period != 0)
+		if dwell_collapse_required == true
+			if ((draw % save_burn_in_period) >= burn_in_period) &&
+				(((draw % save_burn_in_period) % 200) == 0)
 
-		#		println("Collapse Possible")
-		#		@everywhere workers()  n_change_points = collapse_trajectory!(position_x, 
-		#							position_y, 
-		#							change_points_time, 
-		#							change_points_index,
-		#							loads,
-		#							loads_active,
-		#							loads_inactive, 
-		#							n_change_points)
+				println("Collapse Possible")
+				@everywhere workers()  n_change_points = collapse_trajectory!(position_x, 
+									position_y, 
+									change_points_time, 
+									change_points_index,
+									loads,
+									loads_active,
+									loads_inactive, 
+									n_change_points)
 
-		#	end
-		#end
+			end
+		end
 
 
 		if draw <= window_size
