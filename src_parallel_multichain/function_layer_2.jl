@@ -17,10 +17,9 @@ function collapse_trajectory!(position_x,
 							  position_x[loads_active[active_change_point_index-1]])^2 
 							 +(position_y[loads_active[active_change_point_index]] - 
 							   position_y[loads_active[active_change_point_index-1]])^2)
+
 				if jump_size < minimum_allowed_jump_size 
-					#println("collapse_occurred")
-					#@show change_point
-					#@show jump_size/(1.0e-9)
+
 					loads[change_point] = 0
 					position_x[loads_active[active_change_point_index-1]] = 
 						(position_x[loads_active[active_change_point_index]] + 
@@ -72,6 +71,16 @@ function logpdf_Dirichlet(alpha::Vector{Float64}, x::Vector{Float64})
 	end
 	logpdf += loggamma(sum(alpha))
 	return logpdf 
+end
+function logpdf_Uniform(x::Float64, y::Float64)
+
+	if (min_detected_position_x <= x <= max_detected_position_x) &&
+		(min_detected_position_y <= y <= max_detected_position_y)
+
+		return -(log(max_detected_position_x - min_detected_position_x)+log(max_detected_position_y - min_detected_position_y))
+	else
+		return -Inf
+	end
 end
 
 ## -------------------------------------------------------------------

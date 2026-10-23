@@ -1,11 +1,9 @@
-const working_directory = string(pwd(), "/")
-const random_number_generator_seed = myid() - 1
+#const working_directory = string(pwd(), "/")
+#const random_number_generator_seed = myid() - 1
 
-#const file_id = string("simulated_data_dwellwise_fbm_alpha_0.6_realistic")
 const file_id = string("processed_trajectory_dynein")
 
-const data_range = 1:400000 #Use Colon() to choose full data range or a:b for range from a to b
-#const data_range = 1:920000 #Use Colon() to choose full data range or a:b for range from a to b
+const data_range = 1:920000 #Use Colon() to choose full data range or a:b for range from a to b
 #const data_range = 8000000:17000000 #Use Colon() to choose full data range or a:b for range from a to b
 #const data_range = Colon() #Use Colon() to choose full data range or a:b for range from a to b
 
@@ -39,7 +37,8 @@ const maximum_allowed_jump_size = 50.0e-9 # m
 
 # Prior Parameters
 const typical_dwell_gamma_shape = 2.0 # s
-const typical_dwell_time = 3500*10*dt #100.0e-3## s
+const typical_dwell_time = 3500*10*dt # s
+#const typical_dwell_time = 100.0e-3 # s
 const dwell_gamma_shape_uniform_prior_min = 1.0
 const dwell_gamma_shape_uniform_prior_max = 5.0
 const dwell_gamma_mean_prior_shape = 1.0
@@ -61,7 +60,7 @@ const modeling_choice = "nonparametric"
 const expected_n_dwells::Int64 = 1
 
 if modeling_choice == "nonparametric"
-	const dwell_collapse_required = true
+	const dwell_collapse_required = false
 elseif modeling_choice == "parametric"
 	#Always choose false for parametric case
 	const dwell_collapse_required = false
@@ -90,7 +89,7 @@ const stiffness_xy_proposal_alpha = 5.0e2 # Larger value, smaller step size
 # Convegence is typically evident when the posterior
 # probabilities fluctuate about a fixed value (ideally maximum).
 
-const starting_temperature::Float64 = 5000.0#20000.0 # For nonparametric
+const starting_temperature::Float64 = 10000.0#20000.0 # For nonparametric
 const annealing_constant::Float64 = 1000.0
 
 if dwell_collapse_required == true
@@ -102,7 +101,7 @@ if dwell_collapse_required == true
 	const annealing_constant_after_collapse::Float64 = 
 		annealing_constant*((save_burn_in_period-burn_in_period)/burn_in_period)
 else
-	const burn_in_period::Int64 = 15.0*annealing_constant
+	const burn_in_period::Int64 = 20.0*annealing_constant
 	const save_burn_in_period::Int64 = burn_in_period
 end
 const save_frequency::Int64 = save_burn_in_period 
