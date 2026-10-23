@@ -166,9 +166,14 @@ begin
 
     vlines!(
         axis, gt_change_points_time;
-        color = :green,
+        color = :red,
         linewidth = 0.5
     )
+	if ground_truth_available
+		legend_line = LineElement(color = :red, linewidth = 0.5)
+		axislegend(axis, [legend_line], ["Ground Truth"],
+						position=:rt, framevisible=false, labelcolor=:Black)
+	end
 
     xlims!(axis, 0.00, (n_time_points-1)*dt)
     fig
