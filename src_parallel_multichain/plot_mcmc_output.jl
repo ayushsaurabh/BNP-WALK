@@ -2,9 +2,12 @@ using CairoMakie, KernelDensity
 using HDF5
 using Distributions
 using Statistics
+using Printf
+
 
 include("input_parameters.jl")
-current_directory =  "/home/mbgnjasb/codes/chu_lab/inverse_code/no_straight_line_assumption_add_anisotropy_nonparametrics_FBM/experimental_data/dynein/testing_2/"
+current_directory = "/home/mbgnjasb/codes/chu_lab/inverse_code/BNP-WALK_parallel_multichain_simulated_alpha_1.0_gamma_shape_1.0/"
+#current_directory =  "/Users/mbgnjasb/codes/chu_lab/inverse_code/BNP-WALK_parallel_multichain/"
 
 fname = string(current_directory, file_id, ".h5")
 fid = h5open(fname, "r")
@@ -100,22 +103,143 @@ for sample in 1:n_samples
     end
 end
 
+
+
 # Fit a Gamma distribution by maximum likelihood
 dist = fit(Gamma, Float64.(dwells))
 dwell_fitted_gamma_shape = dist.α
 dwell_fitted_gamma_scale = dist.θ #seconds
+dwell_fitted_gamma_mean = dwell_fitted_gamma_scale * dwell_fitted_gamma_shape #seconds
+
 dwell_grid = collect(0.0:n_time_points * dt/1000:n_time_points * dt)
-gamma_pdf = pdf.(Gamma.(dwell_fitted_gamma_shape .+ 0.4, dwell_fitted_gamma_scale .- 0.002), dwell_grid)
+gamma_pdf = pdf.(Gamma.(dwell_fitted_gamma_shape, dwell_fitted_gamma_scale), dwell_grid)
 
 #gamma_prior_pdf = pdf.(Gamma.(change_point_gamma_prior_shape, 
 #					typical_dwell_time/change_point_gamma_prior_shape), dwell_grid)
+
+begin
+    n_bins = 800
+	bin_width = 0.001
+    minimum_peak_count = 20
+
+    time_edges = range(
+        minimum(change_points_time),
+        maximum(change_points_time),
+        length = n_bins + 1
+    )
+    time_centers = (time_edges[1:end-1] .+ time_edges[2:end]) ./ 2
+
+    change_point_counts = zeros(Int, n_bins)
+
+    for time in change_points_time
+        bin = clamp(searchsortedlast(time_edges, time), 1, n_bins)
+        change_point_counts[bin] += 1
+    end
+
+    peak_bins = [
+        i for i in 2:n_bins-1
+        if change_point_counts[i] >= minimum_peak_count &&
+           change_point_counts[i] > change_point_counts[i-1] &&
+           change_point_counts[i] >= change_point_counts[i+1]
+    ]
+
+    fig = Figure(
+        size = (2000, 500), font = "CMU Serif",
+        fontsize = 24, figure_padding = 20
+    )
+
+    axis = Axis(
+        fig[1, 1];
+        xlabel = L"Change \,\, Point \, (s)",
+        ylabel = L"Counts",
+        xlabelsize = 30,
+        ylabelsize = 30
+    )
+
+    hist!(axis, change_points_time; bins = minimum(change_points_time):bin_width:maximum(change_points_time))
+
+    #vlines!(
+    #    axis, time_centers[peak_bins];
+    #    color = :red,
+    #    linewidth = 0.5
+    #)
+
+    vlines!(
+        axis, gt_change_points_time;
+        color = :green,
+        linewidth = 0.5
+    )
+
+    xlims!(axis, 0.00, (n_time_points-1)*dt)
+    fig
+end
+plot_file = string(current_directory, "change_points_plot_", file_id,".png")
+save(plot_file, fig)
+
+
+dwells_between_time_centers = zeros(length(peak_bins)-1)
+for d in 1:length(peak_bins)-1
+	dwells_between_time_centers[d] = (time_centers[peak_bins])[d+1]-(time_centers[peak_bins])[d]
+end
+
+hist(dwells_between_time_centers)
+
+let
+
+    change_point_density = zeros(n_bins)
+
+    for time in change_points_time
+        bin = clamp(searchsortedlast(time_edges, time), 1, n_bins)
+        change_point_density[bin] += 1
+    end
+
+    change_point_density ./=
+        length(change_points_time) * step(time_edges)
+
+    fig_time_density = Figure(size = (1200, 220))
+    axis_time_density = Axis(
+        fig_time_density[1, 1],
+        xlabel = "Time (s)"
+    )
+    hideydecorations!(axis_time_density)
+    hidespines!(axis_time_density)
+
+    density_plot = heatmap!(
+        axis_time_density,
+        time_edges, [0.0, 1.0],
+        reshape(change_point_density, n_bins, 1);
+        colormap = :inferno
+    )
+
+    vlines!(
+        axis_time_density,
+        time_centers[peak_bins];
+        color = :white,
+        linewidth = 0.5
+    )
+    vlines!(axis_time_density,
+        gt_change_points_time;
+        color = :green,
+        linewidth = 1.0
+    )
+
+
+    limits!(axis_time_density, first(time_edges), last(time_edges), 0.0, 1.0)
+
+    Colorbar(
+        fig_time_density[1, 2], density_plot,
+        label = "Change-point density (s⁻¹)"
+    )
+
+    display(fig_time_density)
+end
 
 
 begin
 
 	upper_lim_heatmap_color = 0.00045
 	position_sampling_frequency = 20
-	alpha_data_plot = 1.0
+	alpha_data_plot = 0.7
 	linewidth_data_plot = 0.1
 	n_bins_change_point_hist = 100 
 
@@ -123,13 +247,13 @@ begin
 	upper_lim_dwell_time_hist = 0.05#(n_time_points -1) * dt
 	text_location_x, text_location_y = 0.025, 120
 
-	n_bins_jump_size_hist =200
+	n_bins_jump_size_hist =100
 	upper_lim_jump_size_hist = 50 #nm 
 
 	n_bins_gamma_shape_hist = 10
 	upper_lim_gamma_shape_hist = 5.0
 
-	n_bins_gamma_mean_hist = 40
+	n_bins_gamma_mean_hist = 20
 	upper_lim_gamma_mean_hist = upper_lim_dwell_time_hist
 
 
@@ -152,7 +276,7 @@ begin
 	axis = Axis(fig[1, 1:5]; xlabel = L"x \, (nm)", ylabel = L"y \, (nm)",
 				 xlabelsize = 30, ylabelsize = 30, aspect = DataAspect(),
 				 title=rich("Bayesian inference of ", 
-				 	rich("Dynein ", color=:red),"trajectory using ",  
+				 	rich("Simulated ", color=:red),"trajectory using ",  
 					rich("200", color=:red)," MCMC samples"), titlesize=34)#0,
 				 #xticks = [0, 50, 100, 150, 200, 250, 300])
 				 #yticks = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
@@ -164,7 +288,7 @@ begin
 	if ground_truth_available
 		scatter!(gt_position_x .* 1.0e9, 
 			gt_position_y .* 1.0e9, 
-			color=:red, markersize=20)
+			color=:red, markersize=10)
 	end
 
 	legend_line = LineElement(color = :white, linewidth = 0.5)
@@ -183,14 +307,15 @@ begin
 				 #xticks = [0.00, 0.05, 0.1, 0.15, 0.20])
 				 #yticks = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
 
-	hist!(change_points_time, bins=n_bins_change_point_hist)
+	hist!(change_points_time, 
+		bins=minimum(change_points_time):bin_width:maximum(change_points_time))
 	if ground_truth_available
-		vlines!(gt_change_points_time, color=:red)
+		vlines!(gt_change_points_time, color=:red, linewidth = 0.2)
 	end
 	xlims!(axis, 0.00, (n_time_points-1) * dt)
 
 	if ground_truth_available
-		legend_line = LineElement(color = :red, linewidth = 1.0)
+		legend_line = LineElement(color = :red, linewidth = 0.5)
 		axislegend(axis, [legend_line], ["Ground Truth"],
 						position=:rt, framevisible=false, labelcolor=:Black)
 	end
@@ -206,10 +331,13 @@ begin
 	#		gamma_prior_pdf, color = (:orange, 0.25))
 	hist!(dwells, bins=n_bins_dwell_time_hist, normalization=:pdf)
 	lines!(dwell_grid, gamma_pdf, color=:red, linewidth=4.0)
-  	text!(text_location_x, text_location_y, 
-			text="visual Gamma fit, α = 1.88, θ = 0.0088/α (s)",
+	text!(text_location_x, text_location_y, 
+			text=string("Gamma fit, α = ", 
+				Printf.format(Printf.Format("%.2f"), dwell_fitted_gamma_shape), 
+				", θ = ", 
+				Printf.format(Printf.Format("%.4f"), dwell_fitted_gamma_mean),
+				"/α (s)"),
   				color=:red, align=(:center, :top), fontsize=20)
-
 	legend_line = LineElement(color = (:orange, 0.25), linewidth = 20.0)
 	axislegend(axis, [legend_line], ["Prior"],
 					position=:rc, framevisible=false)
@@ -253,5 +381,183 @@ begin
 	fig
 
 end
-plot_file = string(current_directory, "analysis_plot_dynein_with_Gamma_parameters_integer_search_only_200_samples.png")
+plot_file = string(current_directory, "analysis_plot_", file_id,".png")
+save(plot_file, fig)
+
+
+
+
+begin
+	sample_no = 10
+	sample_trajectory_x = []
+	sample_trajectory_y = []
+
+	loads .= mcmc_loads[sample_no, :]
+	n_change_points = get_active_inactive_loads!(loads, loads_active, loads_inactive)
+
+	for change_point in 1:n_change_points
+		load = loads_active[change_point]
+		if change_point < n_change_points
+	        push!(sample_trajectory_x, mcmc_position_x[sample_no, load])
+			push!(sample_trajectory_y, mcmc_position_y[sample_no, load])
+		end
+	end
+
+	upper_lim_heatmap_color = 0.00045
+	position_sampling_frequency = 20
+	alpha_data_plot = 1.0
+	linewidth_data_plot = 0.1
+	n_bins_change_point_hist = 100 
+
+	n_bins_dwell_time_hist = 200
+	upper_lim_dwell_time_hist = 0.05#(n_time_points -1) * dt
+	text_location_x, text_location_y = 0.025, 120
+
+	n_bins_jump_size_hist =200
+	upper_lim_jump_size_hist = 50 #nm 
+
+	n_bins_gamma_shape_hist = 10
+	upper_lim_gamma_shape_hist = 5.0
+
+	n_bins_gamma_mean_hist = 40
+	upper_lim_gamma_mean_hist = upper_lim_dwell_time_hist
+
+
+	kde_points = (2048, 2048)
+	kde_bw = (2.0, 2.0)
+
+	den = kde((position_x .* 1.0e9, position_y .* 1.0e9), npoints = kde_points, bandwidth = kde_bw)
+	normalized_density = den.density ./ sum(den.density)
+
+	min_position_x = den.x[1] 
+	max_position_x = den.x[end] 
+	min_position_y = den.y[1] 
+	max_position_y = den.y[end] 
+
+	plot_aspect_ratio = abs((max_position_x - min_position_x) / (max_position_y - min_position_y))
+
+	position_colormap = :viridis
+	zero_color = cgrad(position_colormap)[0.0]
+
+	fig = Figure(; size=(1500, 1550), font="CMU Serif", fontsize = 24, figure_padding= 20)
+
+	# Plot 1
+	axis = Axis(fig[1, 1:3]; xlabel = L"x \, (nm)", ylabel = L"y \, (nm)",
+				 xlabelsize = 28, ylabelsize = 28, aspect = DataAspect(),
+				 backgroundcolor=zero_color,
+				 title=rich("Bayesian nonparametric inference of ", 
+				 	rich("Dynein ", color=:red),"trajectory"), titlesize=28)#0,
+				 #xticks = [0, 50, 100, 150, 200, 250, 300])
+				 #yticks = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+	limits!(axis, min_position_x, 310, min_position_y, 40)
+	heatmap!(den.x, den.y, den.density, colorrange=(0.0, upper_lim_heatmap_color))
+	lines!(detected_position_x[1:position_sampling_frequency:end] .* 1.0e9, 
+			detected_position_y[1:position_sampling_frequency:end] .* 1.0e9, 
+			linewidth=linewidth_data_plot, alpha = alpha_data_plot, color=:white)
+	lines!(sample_trajectory_x .* 1.0e9, sample_trajectory_y .* 1.0e9, color=:yellow, linewidth=1.0)
+	#scatter!(sample_trajectory_x .* 1.0e9, sample_trajectory_y .* 1.0e9, color=:orange)
+
+
+	if ground_truth_available
+		scatter!(gt_position_x .* 1.0e9, 
+			gt_position_y .* 1.0e9, 
+			color=:red, markersize=20)
+	end
+
+	legend_line = LineElement(color = :white, linewidth = 0.5)
+	if ground_truth_available
+		dot_element = [MarkerElement(marker = :circle, color = :red, markersize = 20)]
+		axislegend(axis, [legend_line, dot_element], ["Data", "Ground Truth Dwell Positions"],
+						position=:lt, framevisible=false, labelcolor=:white)
+	else
+		axislegend(axis, [legend_line], ["Data"],
+						position=:lt, framevisible=false, labelcolor=:white)
+	end
+
+	# Plot 2
+#	axis = Axis(fig[2, 1]; xlabel = L"Change \,\, Point \, (s)", ylabel = L"Counts",
+#				 xlabelsize = 30, ylabelsize = 30, aspect=1.3)
+#				 #xticks = [0.00, 0.05, 0.1, 0.15, 0.20])
+#				 #yticks = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+#
+#	hist!(change_points_time, bins=n_bins_change_point_hist)
+#	if ground_truth_available
+#		vlines!(gt_change_points_time, color=:red)
+#	end
+#	xlims!(axis, 0.00, (n_time_points-1) * dt)
+#
+#	if ground_truth_available
+#		legend_line = LineElement(color = :red, linewidth = 1.0)
+#		axislegend(axis, [legend_line], ["Ground Truth"],
+#						position=:rt, framevisible=false, labelcolor=:Black)
+#	end
+
+#	# Plot 2
+#	axis = Axis(fig[2, 1]; xlabel = L"Step \, Size \, (nm)", ylabel = L"Probability \, Density",
+#				 xlabelsize = 28, ylabelsize = 28, aspect=1.4)
+#				 #xticks = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+#				 #yticks = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+#
+#	xlims!(axis, 0.00, upper_lim_jump_size_hist)
+#	hist!(jump_sizes .* 1e9, bins=n_bins_jump_size_hist, normalization=:pdf)
+#	#hideydecorations!(axis)
+#
+#	# Plot 3
+#	axis = Axis(fig[2, 2]; xlabel = L"Dwell \, Time \, (s)", ylabel = "",
+#				 xlabelsize = 28, ylabelsize = 28, aspect=1.4)
+#				 #xticks = [0.00, 0.01, 0.02, 0.03, 0.04, 0.05])
+#				 #yticks = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+#
+#	xlims!(axis, 0.00, upper_lim_dwell_time_hist)
+#	#band!(dwell_grid, fill(0, length(dwell_grid)), 
+#	#		gamma_prior_pdf, color = (:orange, 0.25))
+#	hist!(dwells, bins=n_bins_dwell_time_hist, normalization=:pdf)
+#	lines!(dwell_grid, gamma_pdf, color=:red, linewidth=4.0)
+#  	#text!(text_location_x, text_location_y, 
+#			#text="visual Gamma fit, α = 1.88, θ = 0.0088/α (s)",
+#  	#			color=:red, align=(:center, :top), fontsize=20)
+#
+#	legend_line = LineElement(color = (:orange, 0.25), linewidth = 20.0)
+#	#axislegend(axis, [legend_line], ["Prior"],
+#	#				position=:rc, framevisible=false)
+#	#hideydecorations!(axis)
+#
+#
+#
+#
+#	axis = Axis(fig[2, 3]; xlabel = L"Dwell \, Time \, Gamma \, Shape", ylabel = "",
+#				 xlabelsize = 28, ylabelsize = 28, aspect=1.4)
+#				 #xticks = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+#				 #yticks = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+#
+#	xlims!(axis, 0.00, upper_lim_gamma_shape_hist)
+#	hist!(mcmc_dwell_gamma_shape, bins=n_bins_gamma_shape_hist, normalization=:pdf)
+#	#hideydecorations!(axis)
+#
+#	#vlines!([1.86], color=:red)
+# # 	text!(1.9, 0.84, 
+#	#		text="1.86",
+# # 				color=:red, align=(:center, :top), fontsize=20)
+#
+#	#axis = Axis(fig[2, 4]; xlabel = L"Dwell \, Time \, Gamma \, Mean \, (s)", ylabel = L"PDF",
+#	#			 xlabelsize = 24, ylabelsize = 24, aspect=1.3)
+#	#			 #xticks = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+#	#			 #yticks = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+#
+#	#xlims!(axis, 0.00, upper_lim_gamma_mean_hist)
+#	#hist!(mcmc_dwell_gamma_mean, bins=n_bins_gamma_mean_hist, normalization=:pdf)
+#	##vlines!([0.007], color=:red)
+# ## 	text!(0.011, 240, 
+#	##		text="0.007",
+# ## 				color=:red, align=(:center, :top), fontsize=20)
+#	rowsize!(fig.layout, 2, Aspect(3, 1.0))
+	#hideydecorations!(axis)
+
+	fig
+
+end
+plot_file = string(current_directory, "analysis_plot_dynein_with_Gamma_parameters_integer_search_only_200_samples_for_grant_1.png")
+plot_file = string(current_directory, "analysis_plot_dynein_with_Gamma_parameters_integer_search_only_200_samples_for_grant_data_only.png")
+
+
 save(plot_file, fig)
