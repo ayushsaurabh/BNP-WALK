@@ -1,10 +1,9 @@
-#const working_directory = string(pwd(), "/")
-#const random_number_generator_seed = myid() - 1
+const working_directory = string(pwd(), "/")
+const random_number_generator_seed = myid() - 1
 
 const file_id = string("processed_trajectory_dynein")
 
 const data_range = 1:920000 #Use Colon() to choose full data range or a:b for range from a to b
-#const data_range = 8000000:17000000 #Use Colon() to choose full data range or a:b for range from a to b
 #const data_range = Colon() #Use Colon() to choose full data range or a:b for range from a to b
 
 # Availability of Ground Truth
