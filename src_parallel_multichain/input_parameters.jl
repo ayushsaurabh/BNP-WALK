@@ -1,13 +1,16 @@
-const working_directory = string(pwd(), "/")
-const random_number_generator_seed = myid() - 1
+#const working_directory = string(pwd(), "/")
+#const random_number_generator_seed = myid() - 1
 
-const file_id = string("processed_trajectory_dynein")
+const file_id = string("simulated_data_dwellwise_fbm_alpha_0.6_realistic")
+#const file_id = string("processed_trajectory_dynein")
 
-const data_range = 1:920000 #Use Colon() to choose full data range or a:b for range from a to b
-#const data_range = Colon() #Use Colon() to choose full data range or a:b for range from a to b
+#const data_range = 1:460000 #Use Colon() to choose full data range or a:b for range from a to b
+#const data_range = 1:920000 #Use Colon() to choose full data range or a:b for range from a to b
+#const data_range = 8000000:17000000 #Use Colon() to choose full data range or a:b for range from a to b
+const data_range = Colon() #Use Colon() to choose full data range or a:b for range from a to b
 
 # Availability of Ground Truth
-const ground_truth_available = false
+const ground_truth_available = true
 
 # Known Constants
 const kb = 1.38e-23 # (Kg*m^2/s^2)/K
@@ -59,7 +62,7 @@ const modeling_choice = "nonparametric"
 const expected_n_dwells::Int64 = 1
 
 if modeling_choice == "nonparametric"
-	const dwell_collapse_required = false
+	const dwell_collapse_required = true
 elseif modeling_choice == "parametric"
 	#Always choose false for parametric case
 	const dwell_collapse_required = false
@@ -92,9 +95,9 @@ const starting_temperature::Float64 = 10000.0#20000.0 # For nonparametric
 const annealing_constant::Float64 = 1000.0
 
 if dwell_collapse_required == true
-	const burn_in_period::Int64 = 14.0*annealing_constant
+	const burn_in_period::Int64 = 18.0*annealing_constant
 	const collapsed_burn_in_period::Int64 = 
-			15.0*annealing_constant - burn_in_period
+			20.0*annealing_constant - burn_in_period
 	const save_burn_in_period::Int64 = 
 			burn_in_period+collapsed_burn_in_period
 	const annealing_constant_after_collapse::Float64 = 
