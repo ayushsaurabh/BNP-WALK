@@ -1,26 +1,56 @@
 using Distributed
+using Random, Distributions, SpecialFunctions, Statistics, LinearAlgebra
+using HDF5
+using TOML
 
-include("input_parameters.jl")
-addprocs(n_MCMC_chains)
+length(ARGS) == 1 || error("Usage: julia main.jl CONFIG.toml")
 
-@everywhere begin
+const source_directory = @__DIR__
+include(joinpath(source_directory, "runtime_configuration.jl"))
 
+const run_configuration = load_multichain_configuration(ARGS[1])
+const selected_output_file = output_path(run_configuration)
+install_runtime_parameters!(
+	run_configuration,
+	selected_output_file,
+	run_configuration.base_random_seed,
+)
+
+const worker_pids = addprocs(run_configuration.n_MCMC_chains; dir=source_directory)
+const sampler_pids = [myid(); worker_pids]
+const chain_to_plot_pid = worker_pids[run_configuration.chain_to_plot]
+
+@everywhere worker_pids begin
 	using Random, Distributions, SpecialFunctions, Statistics, LinearAlgebra
 	using HDF5
-	include("input_parameters.jl")
-	rng = Xoshiro(random_number_generator_seed);
-	include("function_layer_1.jl")
-	include("function_layer_2.jl")
+	using TOML
+	include($(joinpath(source_directory, "runtime_configuration.jl")))
+end
+
+for (chain_index, pid) in enumerate(worker_pids)
+	chain_seed = run_configuration.base_random_seed + chain_index
+	remotecall_wait(
+		install_runtime_parameters!,
+		pid,
+		run_configuration,
+		selected_output_file,
+		chain_seed,
+	)
+end
+
+@everywhere sampler_pids begin
+	rng = Xoshiro(random_number_generator_seed)
+	include($(joinpath(source_directory, "function_layer_1.jl")))
+	include($(joinpath(source_directory, "function_layer_2.jl")))
 
 	if ground_truth_available
-		fname = string(working_directory, file_id, ".h5")
-		fid = h5open(fname, "r")
-		gt_position_x = read(fid, "gt_x(m)")
-		gt_position_y = read(fid, "gt_y(m)")
-		gt_change_points_time = read(fid, "gt_change_points_time(s)")
-		gt_dwell_time = read(fid, "gt_dwell_time(s)")
-		gt_jump_size = read(fid, "gt_jump_size(m)")
-		close(fid)
+		h5open(input_file, "r") do fid
+			global gt_position_x = read(fid, "gt_x(m)")
+			global gt_position_y = read(fid, "gt_y(m)")
+			global gt_change_points_time = read(fid, "gt_change_points_time(s)")
+			global gt_dwell_time = read(fid, "gt_dwell_time(s)")
+			global gt_jump_size = read(fid, "gt_jump_size(m)")
+		end
 	end
 
 	const detected_position_x, detected_position_y = get_data();
@@ -52,7 +82,7 @@ addprocs(n_MCMC_chains)
 	const log_prior_on::Float64 = log(prior_on)
 	const log_prior_off::Float64 = log(1.0 - prior_on)
 end
-include("function_layer_3.jl")
+include(joinpath(source_directory, "function_layer_3.jl"))
 
 function sampler()
 
@@ -84,7 +114,7 @@ function sampler()
 
 
 
-	@everywhere workers() begin
+	@everywhere worker_pids begin
 
 		diffusion_coeff = typical_diffusion_coeff
 		dwell_gamma_shape = typical_dwell_gamma_shape
@@ -178,18 +208,18 @@ function sampler()
 	accepted_k = 0 
 	accepted_loads = 0
 
-	println("Loads on trace ", chain_to_plot, " = ",  @fetchfrom chain_to_plot+1 loads)
-	println("Loads active on trace ", chain_to_plot," = ",  @fetchfrom chain_to_plot+1 loads_active)
+	println("Loads on chain ", chain_to_plot, " = ",  @fetchfrom chain_to_plot_pid loads)
+	println("Loads active on chain ", chain_to_plot," = ",  @fetchfrom chain_to_plot_pid loads_active)
 
-	plot_position_x = Float64.(@fetchfrom chain_to_plot+1 position_x)
-	plot_position_y = Float64.(@fetchfrom chain_to_plot+1 position_y)
-	plot_change_points_time = Float64.(@fetchfrom chain_to_plot+1 change_points_time)
-	plot_loads_active = Int64.(@fetchfrom chain_to_plot+1 loads_active)
+	plot_position_x = Float64.(@fetchfrom chain_to_plot_pid position_x)
+	plot_position_y = Float64.(@fetchfrom chain_to_plot_pid position_y)
+	plot_change_points_time = Float64.(@fetchfrom chain_to_plot_pid change_points_time)
+	plot_loads_active = Int64.(@fetchfrom chain_to_plot_pid loads_active)
 	plot_mcmc_log_posterior = mcmc_log_posterior
 	plot_mcmc_dwell_gamma_shape = mcmc_dwell_gamma_shape
 
-	plot_gamma_shape[draw] = @fetchfrom chain_to_plot+1 dwell_gamma_shape
-	plot_diffusion_coeff[draw] = @fetchfrom chain_to_plot+1 diffusion_coeff
+	plot_gamma_shape[draw] = @fetchfrom chain_to_plot_pid dwell_gamma_shape
+	plot_diffusion_coeff[draw] = @fetchfrom chain_to_plot_pid diffusion_coeff
 
 
 	if plotting_on == true
@@ -219,11 +249,11 @@ function sampler()
 			exp(-((draw - 1) % save_burn_in_period)/
 			    	annealing_constant)
 
-		@everywhere workers() draw = $draw
-		@everywhere workers() annealing_temperature = $annealing_temperature
+		@everywhere worker_pids draw = $draw
+		@everywhere worker_pids annealing_temperature = $annealing_temperature
 
 
-		@everywhere workers() begin 
+		@everywhere worker_pids begin
 
 			n_change_points =  get_active_inactive_loads!(loads,
 								loads_active,
@@ -371,7 +401,7 @@ function sampler()
 				(((draw % save_burn_in_period) % 200) == 0)
 
 				println("Collapse Possible")
-				@everywhere workers()  n_change_points = collapse_trajectory!(position_x, 
+				@everywhere worker_pids n_change_points = collapse_trajectory!(position_x,
 									position_y, 
 									change_points_time, 
 									change_points_index,
@@ -391,10 +421,10 @@ function sampler()
 			acceptance_moving_window_positions[draw] = accepted_positions
 			acceptance_ratio_positions = sum(acceptance_moving_window_positions)/draw
 
-			acceptance_moving_window_diffusion_coeff[draw] = @fetchfrom chain_to_plot+1 accepted_diffusion_coeff
+			acceptance_moving_window_diffusion_coeff[draw] = @fetchfrom chain_to_plot_pid accepted_diffusion_coeff
 			acceptance_ratio_diffusion_coeff = sum(acceptance_moving_window_diffusion_coeff)/draw
 
-			acceptance_moving_window_gamma[draw] = @fetchfrom chain_to_plot+1 accepted_gamma
+			acceptance_moving_window_gamma[draw] = @fetchfrom chain_to_plot_pid accepted_gamma
 			acceptance_ratio_gamma = sum(acceptance_moving_window_gamma)/draw
 
 			acceptance_moving_window_k[draw] = accepted_k
@@ -430,10 +460,10 @@ function sampler()
 		end
 
 
-		mcmc_log_posterior[draw] = @fetchfrom chain_to_plot+1 log_posterior
-		plot_gamma_shape[draw] = @fetchfrom chain_to_plot+1 dwell_gamma_shape
-		plot_diffusion_coeff[draw] = @fetchfrom chain_to_plot+1 diffusion_coeff
-		n_change_points_to_print = @fetchfrom chain_to_plot+1 n_change_points
+		mcmc_log_posterior[draw] = @fetchfrom chain_to_plot_pid log_posterior
+		plot_gamma_shape[draw] = @fetchfrom chain_to_plot_pid dwell_gamma_shape
+		plot_diffusion_coeff[draw] = @fetchfrom chain_to_plot_pid diffusion_coeff
+		n_change_points_to_print = @fetchfrom chain_to_plot_pid n_change_points
 
 
 		if draw % output_frequency == 0
@@ -470,13 +500,13 @@ function sampler()
 			println("**************************************************************************************************************************************************")
 			println("")
 
-			println("Loads on trace ", chain_to_plot, " = ",  @fetchfrom chain_to_plot+1 loads)
-			println("Loads active on trace ", chain_to_plot," = ",  @fetchfrom chain_to_plot+1 loads_active)
+			println("Loads on chain ", chain_to_plot, " = ",  @fetchfrom chain_to_plot_pid loads)
+			println("Loads active on chain ", chain_to_plot," = ",  @fetchfrom chain_to_plot_pid loads_active)
 
-			plot_position_x .= Float64.(@fetchfrom chain_to_plot+1 position_x)
-			plot_position_y .= Float64.(@fetchfrom chain_to_plot+1 position_y)
-			plot_change_points_time .= Float64.(@fetchfrom chain_to_plot+1 change_points_time)
-			plot_loads_active .= Int64.(@fetchfrom chain_to_plot+1 loads_active)
+			plot_position_x .= Float64.(@fetchfrom chain_to_plot_pid position_x)
+			plot_position_y .= Float64.(@fetchfrom chain_to_plot_pid position_y)
+			plot_change_points_time .= Float64.(@fetchfrom chain_to_plot_pid change_points_time)
+			plot_loads_active .= Int64.(@fetchfrom chain_to_plot_pid loads_active)
 			plot_mcmc_log_posterior .= mcmc_log_posterior
 			plot_mcmc_dwell_gamma_shape .= mcmc_dwell_gamma_shape
 
@@ -504,10 +534,9 @@ function sampler()
 
 			current_sample_chain += 1
 
-			for worker in workers()
+			for (chain_index, worker) in enumerate(worker_pids)
  
-				current_chain = worker - 1
-				current_sample = (current_sample_chain - 1) * n_MCMC_chains + current_chain 
+				current_sample = (current_sample_chain - 1) * n_MCMC_chains + chain_index
 
   				mcmc_loads[current_sample, 1:max_n_change_points] .= @fetchfrom worker loads[:]
 				mcmc_change_points_time[current_sample, 1:max_n_change_points] .= @fetchfrom worker change_points_time[:]
@@ -536,7 +565,7 @@ function sampler()
 				mcmc_log_posterior)
 
 
-			@everywhere workers() begin
+			@everywhere worker_pids begin
 				n_change_points = initialize_parameters!(position_x, 
 						position_y, 
 						change_points_time,
@@ -581,5 +610,8 @@ function sampler()
 	return nothing
 end
 
-sampler()
-rmprocs()
+try
+	sampler()
+finally
+	rmprocs(worker_pids)
+end

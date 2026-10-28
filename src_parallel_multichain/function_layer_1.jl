@@ -1,10 +1,18 @@
 function get_data()
+	detected_position_x, detected_position_y = h5open(input_file, "r") do fid
+		if haskey(fid, "analysis") && haskey(fid["analysis"], "xy")
+			xy = read(fid["analysis/xy"])
+			return xy[1, 1, :], xy[1, 2, :]
+		elseif haskey(fid, "x(m)") && haskey(fid, "y(m)")
+			# Retain compatibility with trajectories written by the original code.
+			return read(fid, "x(m)"), read(fid, "y(m)")
+		end
 
-	fname = string(working_directory, file_id, ".h5")
-	fid = h5open(fname, "r")
-	detected_position_x = read(fid, "x(m)")
-	detected_position_y = read(fid, "y(m)")
-	close(fid)
+		error(
+			"Input file '$input_file' must contain either analysis/xy " *
+			"or the x(m) and y(m) datasets",
+		)
+	end
 
 	detected_position_x .= (detected_position_x .- detected_position_x[1])
 	detected_position_y .= (detected_position_y .- detected_position_y[1])
