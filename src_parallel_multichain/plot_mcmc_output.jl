@@ -15,8 +15,10 @@ det_position_x = read(fid, "x(m)")
 det_position_y = read(fid, "y(m)")
 close(fid)
 
-detected_position_x = (det_position_x .- det_position_x[1])[data_range]
-detected_position_y = (det_position_y .- det_position_y[1])[data_range]
+detected_position_x = det_position_x[data_range]
+detected_position_y = det_position_y[data_range]
+detected_position_x .-= detected_position_x[1]
+detected_position_y .-= detected_position_y[1]
 n_time_points = size(detected_position_x)[1]
 
 if ground_truth_available

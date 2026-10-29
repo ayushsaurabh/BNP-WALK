@@ -14,10 +14,14 @@ function get_data()
 		)
 	end
 
-	detected_position_x .= (detected_position_x .- detected_position_x[1])
-	detected_position_y .= (detected_position_y .- detected_position_y[1])
+	# Select the requested samples before centering so excluded non-finite values,
+	# including a non-finite first sample in the file, cannot contaminate the range.
+	detected_position_x = detected_position_x[data_range]
+	detected_position_y = detected_position_y[data_range]
+	detected_position_x .-= detected_position_x[1]
+	detected_position_y .-= detected_position_y[1]
 
-	return detected_position_x[data_range], detected_position_y[data_range]
+	return detected_position_x, detected_position_y
 end
 
 
