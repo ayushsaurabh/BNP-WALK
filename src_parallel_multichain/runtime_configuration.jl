@@ -1,6 +1,7 @@
 struct MultichainConfiguration
 	input_file::String
 	output_directory::String
+	output_prefix::String
 	base_random_seed::Int64
 	data_range::Union{Colon, UnitRange{Int64}}
 	bin_factor::Int64
@@ -115,6 +116,8 @@ function load_multichain_configuration(configuration_path::AbstractString)
 		configuration_directory,
 	)
 	mkpath(output_directory)
+	output_prefix = haskey(run, "output_prefix") ?
+		_required_value(run, "output_prefix", String) : "mcmc_output_"
 
 	modeling_choice = _required_value(parameters, "modeling_choice", String)
 	modeling_choice in ("nonparametric", "parametric") ||
@@ -123,6 +126,7 @@ function load_multichain_configuration(configuration_path::AbstractString)
 	configuration_object = MultichainConfiguration(
 		input_file,
 		output_directory,
+		output_prefix,
 		_required_value(run, "base_random_seed", Int64),
 		_parse_data_range(get(run, "data_range", "all")),
 		haskey(parameters, "bin_factor") ?
@@ -172,6 +176,8 @@ end
 
 function validate_multichain_configuration(configuration::MultichainConfiguration)
 	configuration.dt > 0.0 || error("dt must be positive")
+	!occursin(r"[/\\]", configuration.output_prefix) ||
+		error("output_prefix must not contain path separators")
 	configuration.bin_factor > 0 || error("bin_factor must be a positive integer")
 	configuration.output_frequency > 0 || error("output_frequency must be positive")
 	configuration.data_plotting_sampling_frequency > 0 ||
@@ -196,7 +202,7 @@ end
 
 function output_path(configuration::MultichainConfiguration)
 	file_id = splitext(basename(configuration.input_file))[1]
-	return joinpath(configuration.output_directory, "mcmc_output_$(file_id).h5")
+	return joinpath(configuration.output_directory, "$(configuration.output_prefix)$(file_id).h5")
 end
 
 function _define_runtime_constant(name::Symbol, value)
@@ -232,6 +238,7 @@ function install_runtime_parameters!(
 
 	values = (
 		:working_directory => configuration.output_directory,
+		:output_prefix => configuration.output_prefix,
 		:input_file => configuration.input_file,
 		:output_file => selected_output_file,
 		:random_number_generator_seed => random_seed,

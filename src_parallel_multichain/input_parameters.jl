@@ -1,4 +1,5 @@
 const working_directory = string(pwd(), "/")
+const output_prefix = "mcmc_output_"
 const random_number_generator_seed = myid() - 1
 
 const file_id = string("processed_trajectory_dynein")

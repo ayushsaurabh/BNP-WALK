@@ -46,7 +46,7 @@ function get_active_inactive_loads!(loads,
 	return n_change_points 
 end
 
-fname = string(current_directory, "mcmc_output_", file_id, ".h5")
+fname = string(current_directory, output_prefix, file_id, ".h5")
 fid = h5open(fname, "r")
 mcmc_loads = read(fid, "mcmc_loads")
 mcmc_change_points_time = read(fid, "mcmc_change_points",)
