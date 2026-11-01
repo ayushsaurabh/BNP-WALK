@@ -7,7 +7,7 @@ struct MultichainConfiguration
 	bin_factor::Int64
 	ground_truth_available::Bool
 	kb::Float64
-	temperature_kelvin::Int64
+	temperature_kelvin::Float64
 	dt::Float64
 	chain_to_plot::Int64
 	output_frequency::Int64
@@ -133,7 +133,7 @@ function load_multichain_configuration(configuration_path::AbstractString)
 			_required_value(parameters, "bin_factor", Int64) : Int64(1),
 		_required_value(parameters, "ground_truth_available", Bool),
 		_required_value(parameters, "kb", Float64),
-		_required_value(parameters, "T", Int64),
+		_required_value(parameters, "T", Float64),
 		_required_value(parameters, "dt", Float64),
 		_required_value(parameters, "chain_to_plot", Int64),
 		_required_value(parameters, "output_frequency", Int64),
