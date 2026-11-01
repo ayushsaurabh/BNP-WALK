@@ -1,3 +1,5 @@
+const calculation_start_time_ns = time_ns()
+
 using Distributed
 using Random, Distributions, SpecialFunctions, Statistics, LinearAlgebra
 using HDF5
@@ -53,7 +55,7 @@ end
 		end
 	end
 
-	const detected_position_x, detected_position_y = get_data();
+	const detected_position_x, detected_position_y, position_origin_x, position_origin_y = get_data();
 	const n_time_points = size(detected_position_x)[1]
 	const min_detected_position_x = minimum(detected_position_x)
 	const min_detected_position_y = minimum(detected_position_y)
@@ -552,12 +554,17 @@ function sampler()
 
       			save_mcmc_data(draw, 
         			current_sample_chain * n_MCMC_chains, 
+				run_configuration,
+				n_time_points,
+				calculation_start_time_ns,
 				mcmc_loads,
 				mcmc_change_points_time,
 				mcmc_dwell_gamma_shape,
 				mcmc_dwell_gamma_mean,
 				mcmc_position_x,
 				mcmc_position_y,
+				position_origin_x,
+				position_origin_y,
 				mcmc_k_xx,
 				mcmc_k_yy,
 				mcmc_k_xy,

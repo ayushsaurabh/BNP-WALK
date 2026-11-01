@@ -67,6 +67,12 @@ def _sample_major(array: np.ndarray, n_samples: int, name: str) -> np.ndarray:
 def load_mcmc_output(filename: Path) -> dict[str, np.ndarray]:
     with h5py.File(filename, "r") as h5_file:
         arrays = {name: _dataset_array(h5_file, name) for name in MCMC_DATASETS}
+        arrays["mcmc_positions_are_absolute"] = np.asarray(
+            bool(
+                "mcmc_positions_are_absolute" in h5_file
+                and np.asarray(h5_file["mcmc_positions_are_absolute"]).item() != 0
+            )
+        )
 
     gamma_shape = np.ravel(arrays["mcmc_dwell_gamma_shape"])
     gamma_mean = np.ravel(arrays["mcmc_dwell_gamma_mean"])
@@ -132,7 +138,11 @@ def _scalar_dataset(h5_file: h5py.File, names: Sequence[str]) -> float | None:
 
 
 def load_trajectory(
-    filename: Path, start: int | None = None, stop: int | None = None
+    filename: Path,
+    start: int | None = None,
+    stop: int | None = None,
+    *,
+    center: bool = True,
 ) -> dict[str, np.ndarray | float | None]:
     with h5py.File(filename, "r") as h5_file:
         if "analysis/xy" in h5_file:
@@ -164,13 +174,13 @@ def load_trajectory(
         raise ValueError("The selected trajectory must contain at least two samples")
 
     # Preserve missing samples as NaNs so Matplotlib leaves gaps instead of
-    # connecting points across missing data.  Center on the first plottable
-    # x/y pair; this also handles a missing first sample without contaminating
-    # the rest of the trajectory.
+    # connecting points across missing data. Legacy MCMC outputs used a
+    # centered coordinate frame, so center their trajectory on the first
+    # plottable x/y pair as well.
     position_x[~np.isfinite(position_x)] = np.nan
     position_y[~np.isfinite(position_y)] = np.nan
     plottable = np.isfinite(position_x) & np.isfinite(position_y)
-    if np.any(plottable):
+    if center and np.any(plottable):
         origin = int(np.flatnonzero(plottable)[0])
         position_x -= position_x[origin]
         position_y -= position_y[origin]
@@ -538,7 +548,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise ValueError("dpi must be positive")
 
     mcmc = load_mcmc_output(args.mcmc_output)
-    trajectory = load_trajectory(args.trajectory, args.start, args.stop)
+    trajectory = load_trajectory(
+        args.trajectory,
+        args.start,
+        args.stop,
+        center=not bool(mcmc["mcmc_positions_are_absolute"]),
+    )
     dt = args.dt if args.dt is not None else trajectory["dt"]
     if dt is None:
         raise ValueError(

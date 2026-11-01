@@ -18,10 +18,12 @@ function get_data()
 	# including a non-finite first sample in the file, cannot contaminate the range.
 	detected_position_x = detected_position_x[data_range]
 	detected_position_y = detected_position_y[data_range]
-	detected_position_x .-= detected_position_x[1]
-	detected_position_y .-= detected_position_y[1]
+	position_origin_x = detected_position_x[1]
+	position_origin_y = detected_position_y[1]
+	detected_position_x .-= position_origin_x
+	detected_position_y .-= position_origin_y
 
-	return detected_position_x, detected_position_y
+	return detected_position_x, detected_position_y, position_origin_x, position_origin_y
 end
 
 

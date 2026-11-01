@@ -18,10 +18,12 @@ function get_data()
 	# including a non-finite first sample in the file, cannot contaminate the range.
 	detected_position_x = detected_position_x[data_range]
 	detected_position_y = detected_position_y[data_range]
-	detected_position_x .-= detected_position_x[1]
-	detected_position_y .-= detected_position_y[1]
+	position_origin_x = detected_position_x[1]
+	position_origin_y = detected_position_y[1]
+	detected_position_x .-= position_origin_x
+	detected_position_y .-= position_origin_y
 
-	return detected_position_x, detected_position_y
+	return detected_position_x, detected_position_y, position_origin_x, position_origin_y
 end
 
 
@@ -150,14 +152,49 @@ if plotting_on == true
 	end
 end
 
+function write_input_parameters!(fid, configuration, n_time_points::Integer)
+	parameters_group = create_group(fid, "parameters")
+
+	for parameter_name in fieldnames(typeof(configuration))
+		parameter_value = getfield(configuration, parameter_name)
+		dataset_name = string(parameter_name)
+
+		if parameter_name == :data_range
+			parameter_value = if parameter_value isa Colon
+				Int64[1, n_time_points]
+			else
+				Int64[first(parameter_value), last(parameter_value)]
+			end
+		elseif parameter_name == :input_file
+			# Preserve the plural name and array shape used by the TOML input.
+			dataset_name = "input_files"
+			parameter_value = [parameter_value]
+		elseif parameter_name == :temperature_kelvin
+			dataset_name = "T"
+		elseif parameter_value isa Bool
+			# HDF5 has no portable native Boolean representation.
+			parameter_value = UInt8(parameter_value)
+		end
+
+		write_dataset(parameters_group, dataset_name, parameter_value)
+	end
+
+	return nothing
+end
+
 function save_mcmc_data(current_draw::Int64, 
 	current_sample::Int64,
+	configuration,
+	n_time_points::Integer,
+	calculation_start_time_ns::UInt64,
 	mcmc_loads::Matrix{Int64},
 	mcmc_change_points_time::Matrix{Float64},
 	mcmc_dwell_gamma_shape::Vector{Float64},
 	mcmc_dwell_gamma_mean::Vector{Float64},
 	mcmc_position_x::Matrix{Float64},
 	mcmc_position_y::Matrix{Float64},
+	position_origin_x::Real,
+	position_origin_y::Real,
 	mcmc_k_xx::Matrix{Float64},
 	mcmc_k_yy::Matrix{Float64},
 	mcmc_k_xy::Matrix{Float64},
@@ -168,18 +205,29 @@ function save_mcmc_data(current_draw::Int64,
 	# Save the data in HDF5 format.
 	h5open(output_file,"w") do fid
 
+	write_input_parameters!(fid, configuration, n_time_points)
+	input_index_offset = configuration.data_range isa Colon ? 0 : first(configuration.data_range) - 1
+	input_time_offset = input_index_offset * configuration.dt
+	output_loads = map(
+		load -> iszero(load) ? load : load + input_index_offset,
+		view(mcmc_loads, 1:current_sample, :),
+	)
+
 	write_dataset(fid, "mcmc_loads",
-			view(mcmc_loads, 1:current_sample, :))
+			output_loads)
 	write_dataset(fid, "mcmc_change_points",
-			view(mcmc_change_points_time, 1:current_sample, :))
+			view(mcmc_change_points_time, 1:current_sample, :) .+ input_time_offset)
 	write_dataset(fid, "mcmc_dwell_gamma_shape",
 			view(mcmc_dwell_gamma_shape, 1:current_sample))
 	write_dataset(fid, "mcmc_dwell_gamma_mean",
 			view(mcmc_dwell_gamma_mean, 1:current_sample))
 	write_dataset(fid, "mcmc_position_x",
-			view(mcmc_position_x, 1:current_sample, :))
+			view(mcmc_position_x, 1:current_sample, :) .+ position_origin_x)
 	write_dataset(fid, "mcmc_position_y",
-			view(mcmc_position_y, 1:current_sample, :))
+			view(mcmc_position_y, 1:current_sample, :) .+ position_origin_y)
+	write_dataset(fid, "position_origin_x", position_origin_x)
+	write_dataset(fid, "position_origin_y", position_origin_y)
+	write_dataset(fid, "mcmc_positions_are_absolute", UInt8(1))
 	write_dataset(fid, "mcmc_k_xx",
 			view(mcmc_k_xx, 1:current_sample, :))
 	write_dataset(fid, "mcmc_k_yy",
@@ -190,6 +238,10 @@ function save_mcmc_data(current_draw::Int64,
 			view(mcmc_diffusion_coeff, 1:current_sample))
 	write_dataset(fid, "mcmc_log_posterior",
 			view(mcmc_log_posterior, 1:current_draw))
+
+	metadata_group = create_group(fid, "metadata")
+	calculation_time_seconds = (time_ns() - calculation_start_time_ns) / 1.0e9
+	write_dataset(metadata_group, "calculation_time", calculation_time_seconds)
 
 	end	
 

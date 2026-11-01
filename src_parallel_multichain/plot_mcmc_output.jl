@@ -17,8 +17,6 @@ close(fid)
 
 detected_position_x = det_position_x[data_range]
 detected_position_y = det_position_y[data_range]
-detected_position_x .-= detected_position_x[1]
-detected_position_y .-= detected_position_y[1]
 n_time_points = size(detected_position_x)[1]
 
 if ground_truth_available
@@ -56,12 +54,22 @@ mcmc_dwell_gamma_shape = 	read(fid, "mcmc_dwell_gamma_shape")
 mcmc_dwell_gamma_mean = 	read(fid, "mcmc_dwell_gamma_mean")
 mcmc_position_x = 	read(fid, "mcmc_position_x")
 mcmc_position_y = 	read(fid, "mcmc_position_y")
+positions_are_absolute = haskey(fid, "mcmc_positions_are_absolute") &&
+	read(fid, "mcmc_positions_are_absolute") != 0
 mcmc_k_xx = 	read(fid, "mcmc_k_xx")
 mcmc_k_yy = 	read(fid, "mcmc_k_yy")
 mcmc_k_xy = 	read(fid, "mcmc_k_xy")
 mcmc_diffusion_coeff = read(fid, "mcmc_diffusion_coeff")
 mcmc_log_posterior = 	read(fid, "mcmc_log_posterior")
 close(fid)
+
+# Outputs written before absolute-coordinate support used the sampler's centered
+# frame. Keep those files plottable while leaving new outputs in the input
+# trajectory's absolute frame.
+if !positions_are_absolute
+	detected_position_x .-= detected_position_x[1]
+	detected_position_y .-= detected_position_y[1]
+end
 
 n_samples = size(mcmc_loads)[1]
 
