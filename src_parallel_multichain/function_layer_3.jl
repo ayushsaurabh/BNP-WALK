@@ -18,12 +18,27 @@ function get_data()
 	# including a non-finite first sample in the file, cannot contaminate the range.
 	detected_position_x = detected_position_x[data_range]
 	detected_position_y = detected_position_y[data_range]
+	n_input_time_points = length(detected_position_x)
+	n_bins = div(length(detected_position_x), bin_factor)
+	n_bins > 0 || error(
+		"The selected data_range must contain at least bin_factor=$bin_factor samples",
+	)
+	n_binned_samples = n_bins * bin_factor
+	detected_position_x = vec(mean(
+		reshape(view(detected_position_x, 1:n_binned_samples), bin_factor, n_bins);
+		dims=1,
+	))
+	detected_position_y = vec(mean(
+		reshape(view(detected_position_y, 1:n_binned_samples), bin_factor, n_bins);
+		dims=1,
+	))
 	position_origin_x = detected_position_x[1]
 	position_origin_y = detected_position_y[1]
 	detected_position_x .-= position_origin_x
 	detected_position_y .-= position_origin_y
 
-	return detected_position_x, detected_position_y, position_origin_x, position_origin_y
+	return detected_position_x, detected_position_y, position_origin_x, position_origin_y,
+		n_input_time_points
 end
 
 
@@ -152,7 +167,7 @@ if plotting_on == true
 	end
 end
 
-function write_input_parameters!(fid, configuration, n_time_points::Integer)
+function write_input_parameters!(fid, configuration, n_input_time_points::Integer)
 	parameters_group = create_group(fid, "parameters")
 
 	for parameter_name in fieldnames(typeof(configuration))
@@ -161,7 +176,7 @@ function write_input_parameters!(fid, configuration, n_time_points::Integer)
 
 		if parameter_name == :data_range
 			parameter_value = if parameter_value isa Colon
-				Int64[1, n_time_points]
+				Int64[1, n_input_time_points]
 			else
 				Int64[first(parameter_value), last(parameter_value)]
 			end
@@ -185,7 +200,7 @@ end
 function save_mcmc_data(current_draw::Int64, 
 	current_sample::Int64,
 	configuration,
-	n_time_points::Integer,
+	n_input_time_points::Integer,
 	calculation_start_time_ns::UInt64,
 	mcmc_loads::Matrix{Int64},
 	mcmc_change_points_time::Matrix{Float64},
@@ -205,11 +220,12 @@ function save_mcmc_data(current_draw::Int64,
 	# Save the data in HDF5 format.
 	h5open(output_file,"w") do fid
 
-	write_input_parameters!(fid, configuration, n_time_points)
+	write_input_parameters!(fid, configuration, n_input_time_points)
 	input_index_offset = configuration.data_range isa Colon ? 0 : first(configuration.data_range) - 1
 	input_time_offset = input_index_offset * configuration.dt
 	output_loads = map(
-		load -> iszero(load) ? load : load + input_index_offset,
+		load -> iszero(load) ? load :
+			input_index_offset + 1 + (load - 1) * configuration.bin_factor,
 		view(mcmc_loads, 1:current_sample, :),
 	)
 

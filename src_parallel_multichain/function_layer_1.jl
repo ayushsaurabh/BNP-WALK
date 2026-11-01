@@ -18,12 +18,27 @@ function get_data()
 	# including a non-finite first sample in the file, cannot contaminate the range.
 	detected_position_x = detected_position_x[data_range]
 	detected_position_y = detected_position_y[data_range]
+	n_input_time_points = length(detected_position_x)
+	n_bins = div(length(detected_position_x), bin_factor)
+	n_bins > 0 || error(
+		"The selected data_range must contain at least bin_factor=$bin_factor samples",
+	)
+	n_binned_samples = n_bins * bin_factor
+	detected_position_x = vec(mean(
+		reshape(view(detected_position_x, 1:n_binned_samples), bin_factor, n_bins);
+		dims=1,
+	))
+	detected_position_y = vec(mean(
+		reshape(view(detected_position_y, 1:n_binned_samples), bin_factor, n_bins);
+		dims=1,
+	))
 	position_origin_x = detected_position_x[1]
 	position_origin_y = detected_position_y[1]
 	detected_position_x .-= position_origin_x
 	detected_position_y .-= position_origin_y
 
-	return detected_position_x, detected_position_y, position_origin_x, position_origin_y
+	return detected_position_x, detected_position_y, position_origin_x, position_origin_y,
+		n_input_time_points
 end
 
 

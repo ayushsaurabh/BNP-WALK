@@ -55,16 +55,18 @@ end
 		end
 	end
 
-	const detected_position_x, detected_position_y, position_origin_x, position_origin_y = get_data();
+	const detected_position_x, detected_position_y, position_origin_x, position_origin_y,
+		n_input_time_points = get_data();
 	const n_time_points = size(detected_position_x)[1]
 	const min_detected_position_x = minimum(detected_position_x)
 	const min_detected_position_y = minimum(detected_position_y)
 	const max_detected_position_x = maximum(detected_position_x)
 	const max_detected_position_y = maximum(detected_position_y)
-	const mean_first_100_positions_x = mean(detected_position_x[1:100])
-	const mean_first_100_positions_y = mean(detected_position_y[1:100])
-	const mean_last_100_positions_x = mean(detected_position_x[end-99:end])
-	const mean_last_100_positions_y = mean(detected_position_y[end-99:end])
+	const summary_window_size = min(100, n_time_points)
+	const mean_first_100_positions_x = mean(detected_position_x[1:summary_window_size])
+	const mean_first_100_positions_y = mean(detected_position_y[1:summary_window_size])
+	const mean_last_100_positions_x = mean(detected_position_x[end-summary_window_size+1:end])
+	const mean_last_100_positions_y = mean(detected_position_y[end-summary_window_size+1:end])
 	
 	
 	# Parameter for Beta-Bernoulli Nonparametrics
@@ -555,7 +557,7 @@ function sampler()
       			save_mcmc_data(draw, 
         			current_sample_chain * n_MCMC_chains, 
 				run_configuration,
-				n_time_points,
+				n_input_time_points,
 				calculation_start_time_ns,
 				mcmc_loads,
 				mcmc_change_points_time,

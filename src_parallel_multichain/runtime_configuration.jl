@@ -3,6 +3,7 @@ struct MultichainConfiguration
 	output_directory::String
 	base_random_seed::Int64
 	data_range::Union{Colon, UnitRange{Int64}}
+	bin_factor::Int64
 	ground_truth_available::Bool
 	kb::Float64
 	temperature_kelvin::Int64
@@ -124,6 +125,8 @@ function load_multichain_configuration(configuration_path::AbstractString)
 		output_directory,
 		_required_value(run, "base_random_seed", Int64),
 		_parse_data_range(get(run, "data_range", "all")),
+		haskey(parameters, "bin_factor") ?
+			_required_value(parameters, "bin_factor", Int64) : Int64(1),
 		_required_value(parameters, "ground_truth_available", Bool),
 		_required_value(parameters, "kb", Float64),
 		_required_value(parameters, "T", Int64),
@@ -169,6 +172,7 @@ end
 
 function validate_multichain_configuration(configuration::MultichainConfiguration)
 	configuration.dt > 0.0 || error("dt must be positive")
+	configuration.bin_factor > 0 || error("bin_factor must be a positive integer")
 	configuration.output_frequency > 0 || error("output_frequency must be positive")
 	configuration.data_plotting_sampling_frequency > 0 ||
 		error("data_plotting_sampling_frequency must be positive")
@@ -233,10 +237,11 @@ function install_runtime_parameters!(
 		:random_number_generator_seed => random_seed,
 		:file_id => file_id_value,
 		:data_range => configuration.data_range,
+		:bin_factor => configuration.bin_factor,
 		:ground_truth_available => configuration.ground_truth_available,
 		:kb => configuration.kb,
 		:T => configuration.temperature_kelvin,
-		:dt => configuration.dt,
+		:dt => configuration.dt * configuration.bin_factor,
 		:chain_to_plot => configuration.chain_to_plot,
 		:output_frequency => configuration.output_frequency,
 		:plotting_on => configuration.plotting_on,

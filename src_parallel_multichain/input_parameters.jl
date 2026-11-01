@@ -13,6 +13,7 @@ const ground_truth_available = false
 const kb = 1.38e-23 # (Kg*m^2/s^2)/K
 const T = 300 # K
 const dt = 5.0e-7 #1.0e-7## s
+const bin_factor = 1
 
 # Output Parameters
 const chain_to_plot = 1
